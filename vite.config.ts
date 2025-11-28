@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3030,
       host: '0.0.0.0',
+      allowedHosts: ['lineraflow.xyz', 'www.lineraflow.xyz', 'localhost'],
       headers: {
         // Required for SharedArrayBuffer support (Linera WASM)
         'Cross-Origin-Opener-Policy': 'same-origin',

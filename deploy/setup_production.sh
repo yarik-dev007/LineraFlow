@@ -41,7 +41,7 @@ echo ">>> Generating .env file..."
 cat > "$WORK_DIR/.env" <<EOF
 VITE_LINERA_FAUCET_URL=https://faucet.testnet-conway.linera.net
 VITE_LINERA_APPLICATION_ID=a2376c5a0cc2e471078462f22eacca74d1ca8849dd09dbc47cb0e5da5e06fb89
-VITE_LINERA_MAIN_CHAIN_ID=8034b1b376dd64d049deec9bb3a74378502e9b2a6b1b370c5d1a510534e93b66
+VITE_LINERA_MAIN_CHAIN_ID=bdbf434aa7a91c5696b142a32028361ee988175e1da207c26fcd06b3e0205eb8
 VITE_POCKETBASE_URL=https://$DOMAIN:8090
 EOF
 
@@ -96,17 +96,21 @@ sudo systemctl enable --now pocketbase
 echo ">>> Configuring Nginx..."
 
 # Main Site Config (Port 80/443) + PocketBase Proxy (Port 8090 SSL)
+sudo mkdir -p /var/www/lineraflow.xyz/.well-known/acme-challenge
+
 sudo bash -c "cat > /etc/nginx/sites-available/$DOMAIN <<'NGINXEOF'
 server {
     listen 80;
     server_name lineraflow.xyz;
 
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
+    location ^~ /.well-known/acme-challenge/ {
+        alias /var/www/lineraflow.xyz/.well-known/acme-challenge/;
+        try_files \$uri =404;
     }
 
-    # Redirect all HTTP to HTTPS
-    return 301 https://\$server_name\$request_uri;
+    location / {
+        return 301 https://\$host\$request_uri;
+    }
 }
 
 # Main Frontend Server
@@ -114,7 +118,7 @@ server {
     listen 443 ssl http2;
     server_name lineraflow.xyz;
 
-    # SSL Certificates (will be managed by Certbot)
+    # SSL Certificates
     ssl_certificate /etc/letsencrypt/live/lineraflow.xyz/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/lineraflow.xyz/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
@@ -154,7 +158,7 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    # COEP/COOP Headers (Optional for API but good for consistency)
+    # COEP/COOP Headers
     add_header Cross-Origin-Opener-Policy \"same-origin\" always;
     add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
     add_header Access-Control-Allow-Origin \"*\" always;
@@ -169,7 +173,6 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         
-        # Increase body size for file uploads
         client_max_body_size 10M;
     }
 }
@@ -198,9 +201,8 @@ sudo systemctl reload nginx
 # LET'S ENCRYPT SSL
 # =========================
 echo ">>> Requesting SSL Certificates..."
-# Stop Nginx briefly to allow standalone certbot if needed, or use --nginx plugin
-# We use --nginx plugin which handles the challenge via Nginx
-sudo certbot --nginx -n --agree-tos -m "$EMAIL" -d "$DOMAIN" --redirect || true
+# Use webroot mode to avoid Nginx config modification issues
+sudo certbot certonly --webroot -w /var/www/lineraflow.xyz -n --agree-tos -m "$EMAIL" -d "$DOMAIN" --force-renewal || true
 
 # Reload Nginx to pick up real certs
 sudo systemctl reload nginx
