@@ -9,7 +9,7 @@ interface ProfileEditorProps {
     donations?: any[];
 }
 
-const MAIN_CHAIN_ID = "8034b1b376dd64d049deec9bb3a74378502e9b2a6b1b370c5d1a510534e93b66";
+const MAIN_CHAIN_ID = import.meta.env.VITE_LINERA_MAIN_CHAIN_ID;
 
 const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, donations = [] }) => {
     const { application, accountOwner, balances } = useLinera();

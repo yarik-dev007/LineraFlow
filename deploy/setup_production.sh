@@ -34,6 +34,17 @@ sudo ufw --force enable
 # =========================
 # INSTALL DEPENDENCIES & BUILD
 # =========================
+# =========================
+# ENVIRONMENT CONFIG
+# =========================
+echo ">>> Generating .env file..."
+cat > "$WORK_DIR/.env" <<EOF
+VITE_LINERA_FAUCET_URL=https://faucet.testnet-conway.linera.net
+VITE_LINERA_APPLICATION_ID=a2376c5a0cc2e471078462f22eacca74d1ca8849dd09dbc47cb0e5da5e06fb89
+VITE_LINERA_MAIN_CHAIN_ID=8034b1b376dd64d049deec9bb3a74378502e9b2a6b1b370c5d1a510534e93b66
+VITE_POCKETBASE_URL=https://$DOMAIN:8090
+EOF
+
 echo ">>> Building frontend..."
 cd "$WORK_DIR"
 npm ci
