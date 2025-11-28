@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3030,
       host: '0.0.0.0',
-      allowedHosts: ['lineraflow.xyz', 'www.lineraflow.xyz', 'localhost'],
+      allowedHosts: true,
       headers: {
         // Required for SharedArrayBuffer support (Linera WASM)
         'Cross-Origin-Opener-Policy': 'same-origin',
@@ -18,8 +18,16 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     build: {
       rollupOptions: {
+        input: {
+          main: path.resolve(__dirname, 'index.html'),
+          linera: '@linera/client',
+        },
         preserveEntrySignatures: 'strict',
       },
+    },
+    worker: {
+      format: 'es',
+      plugins: () => [],
     },
     optimizeDeps: {
       exclude: [

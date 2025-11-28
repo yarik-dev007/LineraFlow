@@ -16,6 +16,16 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
             .slice(0, 3);
     }, [allDonations, creator.contractAddress]);
 
+    // Calculate unique backers count
+    const backersCount = useMemo(() => {
+        const uniqueDonors = new Set(
+            allDonations
+                .filter((d: any) => d.to_owner === creator.contractAddress)
+                .map((d: any) => d.from_owner)
+        );
+        return uniqueDonors.size;
+    }, [allDonations, creator.contractAddress]);
+
     return (
         <div className="w-full max-w-5xl mx-auto animate-slide-in pb-12">
             {/* Navigation */}
@@ -70,7 +80,7 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
                             </div>
                             <div>
                                 <span className="block text-gray-500 text-xs uppercase">Backers</span>
-                                <span className="font-display text-3xl">{creator.followers || 142}</span>
+                                <span className="font-display text-3xl">{backersCount}</span>
                             </div>
                         </div>
                     </div>
@@ -104,9 +114,6 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
                         <h2 className="font-display text-2xl uppercase mb-4">Creator Bio</h2>
                         <p className="font-mono text-sm leading-relaxed text-gray-700 mb-6">
                             {creator.fullBio || creator.shortBio}
-                        </p>
-                        <p className="font-mono text-sm leading-relaxed text-gray-700">
-                            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Brutalism in design reflects the raw functionality of the blockchain. We do not hide the mechanics; we celebrate the grid, the transaction, and the block. Every signal sent to this node fuels the expansion of the decentralized lattice.
                         </p>
                     </div>
 
