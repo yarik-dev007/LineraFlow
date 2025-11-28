@@ -1,0 +1,103 @@
+@import '@fontsource/archivo-black';
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/inter/900.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
+@import '@fontsource/space-mono/400.css';
+@import '@fontsource/space-mono/700.css';
+
+@import "tailwindcss";
+
+@theme {
+    --color-linera-red: #FF4438;
+    --color-paper-white: #FFFFFF;
+    --color-deep-black: #000000;
+
+    --font-family-sans: Inter, sans-serif;
+    --font-family-display: "Archivo Black", sans-serif;
+    --font-family-mono: "JetBrains Mono", monospace;
+
+    --shadow-hard: 8px 8px 0px 0px #000000;
+    --shadow-hard-sm: 4px 4px 0px 0px #000000;
+    --shadow-hard-hover: 2px 2px 0px 0px #000000;
+}
+
+@layer utilities {
+    .bg-grid-pattern {
+        background-image: radial-gradient(#000 1px, transparent 1px);
+        background-size: 24px 24px;
+    }
+
+    .animate-marquee {
+        animation: marquee 25s linear infinite;
+    }
+
+    .animate-pop-in {
+        animation: pop-in 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+    }
+
+    .animate-slide-in {
+        animation: slide-in 0.4s ease-out forwards;
+    }
+}
+
+@keyframes marquee {
+    0% {
+        transform: translateX(100%);
+    }
+
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+@keyframes pop-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.9) translateY(20px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@keyframes slide-in {
+    0% {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+body {
+    background-color: #FFFFFF;
+    color: #000000;
+    overflow-x: hidden;
+}
+
+/* Custom scrollbar for that brutalist feel */
+::-webkit-scrollbar {
+    width: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: #FFFFFF;
+    border-left: 3px solid #000000;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #FF4438;
+    border: 2px solid #000000;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #000000;
+}

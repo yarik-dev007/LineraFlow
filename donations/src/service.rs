@@ -1,0 +1,319 @@
+#![cfg_attr(target_arch = "wasm32", no_main)]
+
+mod state;
+
+use std::sync::Arc;
+use async_graphql::{EmptySubscription, Object, Request, Response, Schema};
+use linera_sdk::{linera_base_types::{AccountOwner, WithServiceAbi, Amount}, views::View, Service, ServiceRuntime};
+use donations::{DonationsAbi, Operation, AccountInput, Profile as LibProfile, DonationRecord as LibDonationRecord, ProfileView, DonationView, SocialLinkInput, TotalAmountView};
+use state::DonationsState;
+
+linera_sdk::service!(DonationsService);
+
+pub struct DonationsService { runtime: Arc<ServiceRuntime<Self>> }
+
+impl WithServiceAbi for DonationsService { type Abi = DonationsAbi; }
+
+impl Service for DonationsService {
+    type Parameters = ();
+    async fn new(runtime: ServiceRuntime<Self>) -> Self { DonationsService { runtime: Arc::new(runtime) } }
+    async fn handle_query(&self, request: Request) -> Response {
+        let schema = Schema::build(QueryRoot { runtime: self.runtime.clone(), storage_context: self.runtime.root_view_storage_context() }, MutationRoot { runtime: self.runtime.clone() }, EmptySubscription).finish();
+        schema.execute(request).await
+    }
+}
+
+struct Accounts {
+    runtime: Arc<ServiceRuntime<DonationsService>>,
+}
+
+#[Object]
+impl Accounts {
+    async fn entry(&self, key: AccountOwner) -> donations::AccountEntry {
+        let value = self.runtime.owner_balance(key);
+        donations::AccountEntry { key, value }
+    }
+
+    async fn entries(&self) -> Vec<donations::AccountEntry> {
+        self.runtime
+            .owner_balances()
+            .into_iter()
+            .map(|(owner, amount)| donations::AccountEntry {
+                key: owner,
+                value: amount,
+            })
+            .collect()
+    }
+
+    async fn keys(&self) -> Vec<AccountOwner> {
+        self.runtime.balance_owners()
+    }
+
+    async fn chain_balance(&self) -> String {
+        let balance = self.runtime.chain_balance();
+        balance.to_string()
+    }
+}
+
+struct QueryRoot { runtime: Arc<ServiceRuntime<DonationsService>>, storage_context: linera_sdk::views::ViewStorageContext }
+
+#[Object]
+impl QueryRoot {
+    async fn accounts(&self) -> Accounts {
+        Accounts {
+            runtime: self.runtime.clone(),
+        }
+    }
+
+    async fn profile(&self, owner: AccountOwner) -> Option<LibProfile> {
+        match DonationsState::load(self.storage_context.clone()).await { Ok(state) => state.get_profile(owner).await.ok().flatten(), Err(_) => None }
+    }
+    async fn donations_by_recipient(&self, owner: AccountOwner) -> Vec<LibDonationRecord> {
+        match DonationsState::load(self.storage_context.clone()).await { Ok(state) => state.list_donations_by_recipient(owner).await.unwrap_or_default(), Err(_) => Vec::new() }
+    }
+    async fn donations_by_donor(&self, owner: AccountOwner) -> Vec<LibDonationRecord> {
+        match DonationsState::load(self.storage_context.clone()).await { Ok(state) => state.list_donations_by_donor(owner).await.unwrap_or_default(), Err(_) => Vec::new() }
+    }
+    async fn all_profiles(&self) -> Vec<LibProfile> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.profiles.indices().await {
+                    Ok(owners) => {
+                        let mut res = Vec::new();
+                        for owner in owners {
+                            if let Ok(Some(p)) = state.profiles.get(&owner).await { res.push(p); }
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+    async fn all_donations(&self) -> Vec<LibDonationRecord> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.donations.indices().await {
+                    Ok(ids) => {
+                        let mut res = Vec::new();
+                        for id in ids {
+                            if let Ok(Some(r)) = state.donations.get(&id).await { res.push(r); }
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn profile_view(&self, owner: AccountOwner) -> Option<ProfileView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                state.get_profile(owner).await.ok().flatten().map(|p| ProfileView {
+                    owner: p.owner,
+                    chain_id,
+                    name: p.name,
+                    bio: p.bio,
+                    socials: p.socials,
+                })
+            },
+            Err(_) => None,
+        }
+    }
+
+    async fn all_profiles_view(&self) -> Vec<ProfileView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.profiles.indices().await {
+                    Ok(owners) => {
+                        let mut res = Vec::new();
+                        for owner in owners {
+                            let chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            if let Ok(Some(p)) = state.profiles.get(&owner).await {
+                                res.push(ProfileView { owner: p.owner, chain_id, name: p.name, bio: p.bio, socials: p.socials });
+                            }
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn donations_view_by_recipient(&self, owner: AccountOwner) -> Vec<DonationView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let to_chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                match state.list_donations_by_recipient(owner).await {
+                    Ok(list) => {
+                        let mut res = Vec::with_capacity(list.len());
+                        for r in list {
+                            let from_chain_id = state.subscriptions.get(&r.from).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            res.push(DonationView {
+                                id: r.id,
+                                timestamp: r.timestamp,
+                                from_owner: r.from,
+                                from_chain_id,
+                                to_owner: r.to,
+                                to_chain_id: to_chain_id.clone(),
+                                amount: r.amount,
+                                message: r.message,
+                            });
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn donations_view_by_donor(&self, owner: AccountOwner) -> Vec<DonationView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let from_chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                match state.list_donations_by_donor(owner).await {
+                    Ok(list) => {
+                        let mut res = Vec::with_capacity(list.len());
+                        for r in list {
+                            let to_chain_id = state.subscriptions.get(&r.to).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            res.push(DonationView {
+                                id: r.id,
+                                timestamp: r.timestamp,
+                                from_owner: r.from,
+                                from_chain_id: from_chain_id.clone(),
+                                to_owner: r.to,
+                                to_chain_id,
+                                amount: r.amount,
+                                message: r.message,
+                            });
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn all_donations_view(&self) -> Vec<DonationView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.donations.indices().await {
+                    Ok(ids) => {
+                        let mut res = Vec::new();
+                        for id in ids {
+                            if let Ok(Some(r)) = state.donations.get(&id).await {
+                                let from_chain_id = state.subscriptions.get(&r.from).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                                let to_chain_id = state.subscriptions.get(&r.to).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                                res.push(DonationView { id: r.id, timestamp: r.timestamp, from_owner: r.from, from_chain_id, to_owner: r.to, to_chain_id, amount: r.amount, message: r.message });
+                            }
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn total_received_amount(&self, owner: AccountOwner) -> String {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.donations_by_recipient.get(&owner).await {
+                    Ok(Some(ids)) => {
+                        let mut sum = Amount::ZERO;
+                        for id in ids {
+                            if let Ok(Some(r)) = state.donations.get(&id).await { sum = sum.saturating_add(r.amount); }
+                        }
+                        sum.to_string()
+                    },
+                    _ => Amount::ZERO.to_string(),
+                }
+            },
+            Err(_) => Amount::ZERO.to_string(),
+        }
+    }
+
+    async fn total_sent_amount(&self, owner: AccountOwner) -> String {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.donations_by_donor.get(&owner).await {
+                    Ok(Some(ids)) => {
+                        let mut sum = Amount::ZERO;
+                        for id in ids {
+                            if let Ok(Some(r)) = state.donations.get(&id).await { sum = sum.saturating_add(r.amount); }
+                        }
+                        sum.to_string()
+                    },
+                    _ => Amount::ZERO.to_string(),
+                }
+            },
+            Err(_) => Amount::ZERO.to_string(),
+        }
+    }
+
+    async fn total_received_view(&self, owner: AccountOwner) -> TotalAmountView {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                let amount = match state.donations_by_recipient.get(&owner).await {
+                    Ok(Some(ids)) => {
+                        let mut sum = Amount::ZERO;
+                        for id in ids { if let Ok(Some(r)) = state.donations.get(&id).await { sum = sum.saturating_add(r.amount); } }
+                        sum
+                    },
+                    _ => Amount::ZERO,
+                };
+                TotalAmountView { owner, chain_id, amount }
+            },
+            Err(_) => TotalAmountView { owner, chain_id: self.runtime.chain_id().to_string(), amount: Amount::ZERO },
+        }
+    }
+
+    async fn total_sent_view(&self, owner: AccountOwner) -> TotalAmountView {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                let amount = match state.donations_by_donor.get(&owner).await {
+                    Ok(Some(ids)) => {
+                        let mut sum = Amount::ZERO;
+                        for id in ids { if let Ok(Some(r)) = state.donations.get(&id).await { sum = sum.saturating_add(r.amount); } }
+                        sum
+                    },
+                    _ => Amount::ZERO,
+                };
+                TotalAmountView { owner, chain_id, amount }
+            },
+            Err(_) => TotalAmountView { owner, chain_id: self.runtime.chain_id().to_string(), amount: Amount::ZERO },
+        }
+    }
+}
+
+struct MutationRoot { runtime: Arc<ServiceRuntime<DonationsService>> }
+
+#[Object]
+impl MutationRoot {
+    async fn transfer(&self, owner: AccountOwner, amount: String, target_account: AccountInput, text_message: Option<String>) -> String {
+        let fungible_account = linera_sdk::abis::fungible::Account { chain_id: target_account.chain_id, owner: target_account.owner };
+        self.runtime.schedule_operation(&Operation::Transfer { owner, amount: amount.parse::<Amount>().unwrap_or_default(), target_account: fungible_account, text_message });
+        "ok".to_string()
+    }
+    async fn withdraw(&self) -> String { self.runtime.schedule_operation(&Operation::Withdraw); "ok".to_string() }
+    async fn mint(&self, owner: AccountOwner, amount: String) -> String { self.runtime.schedule_operation(&Operation::Mint { owner, amount: amount.parse::<Amount>().unwrap_or_default() }); "ok".to_string() }
+    async fn update_profile(&self, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>) -> String { self.runtime.schedule_operation(&Operation::UpdateProfile { name, bio, socials }); "ok".to_string() }
+    async fn register(&self, main_chain_id: String, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>) -> String {
+        let chain_id = main_chain_id.parse().unwrap();
+        self.runtime.schedule_operation(&Operation::Register { main_chain_id: chain_id, name, bio, socials });
+        "ok".to_string()
+    }
+}

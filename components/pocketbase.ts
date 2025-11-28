@@ -1,0 +1,5 @@
+import PocketBase from 'pocketbase';
+
+export const pb = new PocketBase('http://127.0.0.1:8090');
+pb.autoCancellation(false); // Disable auto-cancellation to ensure all requests complete
+pb.autoCancellation(false);
