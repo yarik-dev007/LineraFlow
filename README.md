@@ -64,13 +64,16 @@ VITE_POCKETBASE_URL=http://127.0.0.1:8090 # Or your production URL
     ```
     The app will be available at `http://localhost:3030`.
 
-5.  **Deploy smart contracts:** ```bash linera project publish-and-create     --json-argument '{
+5.  **Deploy smart contracts:**
+   ```bash
+    linera project publish-and-create     --json-argument '{
         "accounts": {
             "input your owner": "1"
         }
     }'     --json-parameters '{
         "ticker_symbol": "NAT"
-    }'  ```
+    }'
+```
 
 ## 🚀 Deployment
 
