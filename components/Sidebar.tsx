@@ -1,5 +1,7 @@
 import React from 'react';
 import { AppView, WalletState } from '../types';
+import { Wallet } from 'lucide-react';
+
 
 interface SidebarProps {
   currentView: AppView;
@@ -56,7 +58,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggl
           `}
         >
           {!wallet.isConnected ? (
-            <div className="flex flex-col items-center justify-center py-2">
+            <div className="flex flex-col items-center justify-center py-2 gap-1">
+              <Wallet className="w-6 h-6" />
               <span className="font-display text-xl uppercase tracking-widest">Connect Wallet</span>
             </div>
           ) : (
@@ -93,12 +96,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggl
         >
           {!wallet.isConnected ? (
             <>
-              <span className="font-mono text-lg font-bold">⚇</span>
+              <Wallet className="w-5 h-5 mb-1" />
               <span className="text-[10px] font-mono uppercase font-bold">LINK</span>
             </>
           ) : (
             <>
-              <span className="font-mono text-lg font-bold">Ξ</span>
+              <Wallet className="w-5 h-5 mb-1" />
               <span className="text-[10px] font-mono uppercase font-bold">{wallet.ownerBalance.toFixed(0)} LIN</span>
             </>
           )}

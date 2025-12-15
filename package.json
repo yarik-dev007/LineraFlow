@@ -17,6 +17,7 @@
     "@linera/client": "^0.15.6",
     "@linera/signer": "^0.15.6",
     "ethers": "^6.15.0",
+    "lucide-react": "^0.561.0",
     "pocketbase": "^0.26.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

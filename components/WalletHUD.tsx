@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { WalletState } from '../types';
+import { Wallet } from 'lucide-react';
 import { useLinera } from './useLinera';
 
 interface WalletHUDProps {
@@ -122,6 +123,7 @@ const WalletHUD: React.FC<WalletHUDProps> = ({ onMint, onWithdraw, onClose, onCo
                                     onClick={onConnect}
                                     className="w-full py-4 bg-linera-red text-white font-display text-lg uppercase tracking-widest hover:bg-deep-black hover:translate-x-1 hover:translate-y-1 hover:shadow-none transition-all shadow-[4px_4px_0px_0px_#000] border-2 border-transparent flex justify-center items-center gap-2"
                                 >
+                                    <Wallet className="w-5 h-5" />
                                     <span>Connect Wallet</span>
                                 </button>
                             ) : (
