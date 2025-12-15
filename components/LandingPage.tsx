@@ -32,18 +32,14 @@ const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
             </button>
           </div>
         </div>
-        <div className="absolute bottom-4 left-4 md:bottom-8 md:left-8 font-mono text-[10px] md:text-xs opacity-70 bg-white p-2 border border-black hidden md:block">
-          SYSTEM ARCHITECTURE: V1.0.4<br />
-          ACTIVE AUTHORS: 4,231
-        </div>
       </section>
 
       {/* TICKER */}
-      <div className="bg-deep-black text-white overflow-hidden py-3 border-b-4 border-deep-black relative z-20">
+      < div className="bg-deep-black text-white overflow-hidden py-3 border-b-4 border-deep-black relative z-20" >
         <div className="whitespace-nowrap animate-marquee font-mono font-bold text-sm md:text-xl">
            // LIVE DONATION DATA // BLOCK HEIGHT: 891,221 // GAS PRICE: 0.0001 LIN // TOTAL VALUE LOCKED: $42,000,000 // NEXT EPOCH: 12M // NEW BLOCK VERIFIED: 0x991...AA // CREATOR SUPPORT: +12% //
         </div>
-      </div>
+      </div >
 
       {/* FEATURES GRID */}
       {/* Changed to 2 columns on md, 3 on lg to prevent squeezing */}
@@ -123,7 +119,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onEnter }) => {
           <p>HASH: 88a1...ff29</p>
         </div>
       </footer>
-    </div>
+    </div >
   );
 };
 
