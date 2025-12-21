@@ -4,7 +4,7 @@ mod state;
 
 use linera_sdk::{
     abis::fungible::{Account as FungibleAccount, InitialState, Parameters},
-    linera_base_types::{Account, AccountOwner, WithContractAbi, StreamName, StreamUpdate},
+    linera_base_types::{Account, AccountOwner, Amount, WithContractAbi, StreamName, StreamUpdate},
     views::{RootView, View},
     Contract, ContractRuntime,
 };
@@ -104,6 +104,10 @@ impl Contract for DonationsContract {
                     .prepare_message(msg)
                     .with_authentication()
                     .send_to(main_chain_id);
+                
+                // Save main_chain_id to subscriptions so we know where to send future messages
+                let _ = self.state.subscriptions.insert(&owner, main_chain_id.to_string());
+                
                 let ts = self.runtime.system_time().micros();
                 if let Some(n) = name.clone() {
                     let _ = self.state.set_name(owner, n.clone()).await;
@@ -128,6 +132,128 @@ impl Contract for DonationsContract {
             Operation::GetDonationsByDonor { owner } => {
                 match self.state.list_donations_by_donor(owner).await { Ok(v) => ResponseData::Donations(v), Err(_) => ResponseData::Donations(Vec::new()) }
             }
+            Operation::CreateProduct { name, description, link, data_blob_hash, price } => {
+                let owner = self.runtime.authenticated_signer().expect("Authentication required");
+                let ts = self.runtime.system_time().micros();
+                let chain_id = self.runtime.chain_id();
+                let product_id = format!("{}-{}", ts, chain_id);
+                
+                let product = donations::Product {
+                    id: product_id.clone(),
+                    author: owner,
+                    author_chain_id: chain_id.to_string(),
+                    name: name.clone(),
+                    description: description.clone(),
+                    link: link.clone(),
+                    data_blob_hash: data_blob_hash.clone(),
+                    price,
+                    created_at: ts,
+                };
+                
+                self.state.create_product(product.clone()).await.expect("Failed to create product");
+                self.runtime.emit("donations_events".into(), &DonationsEvent::ProductCreated { product: product.clone(), timestamp: ts });
+                
+                // Send to main chain if we're on a different chain
+                if let Ok(main_chain_str) = self.state.subscriptions.get(&owner).await {
+                    if let Some(main_chain_id_str) = main_chain_str {
+                        if let Ok(main_chain_id) = main_chain_id_str.parse() {
+                            if main_chain_id != chain_id {
+                                self.runtime.prepare_message(Message::ProductCreated { product }).with_authentication().send_to(main_chain_id);
+                            }
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
+            Operation::UpdateProduct { product_id, name, description, link, data_blob_hash, price } => {
+                let owner = self.runtime.authenticated_signer().expect("Authentication required");
+                self.state.update_product(&product_id, owner, name, description, link, data_blob_hash, price).await.expect("Failed to update product");
+                
+                let product = self.state.get_product(&product_id).await.expect("Failed to get product").expect("Product not found");
+                let ts = self.runtime.system_time().micros();
+                self.runtime.emit("donations_events".into(), &DonationsEvent::ProductUpdated { product: product.clone(), timestamp: ts });
+                
+                // Send to main chain
+                if let Ok(main_chain_str) = self.state.subscriptions.get(&owner).await {
+                    if let Some(main_chain_id_str) = main_chain_str {
+                        if let Ok(main_chain_id) = main_chain_id_str.parse() {
+                            let chain_id = self.runtime.chain_id();
+                            if main_chain_id != chain_id {
+                                self.runtime.prepare_message(Message::ProductUpdated { product }).with_authentication().send_to(main_chain_id);
+                            }
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
+            Operation::DeleteProduct { product_id } => {
+                let owner = self.runtime.authenticated_signer().expect("Authentication required");
+                self.state.delete_product(&product_id, owner).await.expect("Failed to delete product");
+                
+                let ts = self.runtime.system_time().micros();
+                self.runtime.emit("donations_events".into(), &DonationsEvent::ProductDeleted { product_id: product_id.clone(), author: owner, timestamp: ts });
+                
+                // Send to main chain
+                if let Ok(main_chain_str) = self.state.subscriptions.get(&owner).await {
+                    if let Some(main_chain_id_str) = main_chain_str {
+                        if let Ok(main_chain_id) = main_chain_id_str.parse() {
+                            let chain_id = self.runtime.chain_id();
+                            if main_chain_id != chain_id {
+                                self.runtime.prepare_message(Message::ProductDeleted { product_id, author: owner }).with_authentication().send_to(main_chain_id);
+                            }
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
+            Operation::TransferToBuy { owner, product_id, amount, target_account } => {
+                self.runtime.check_account_permission(owner).expect("Permission denied");
+                
+                // NOTE: We do NOT check for product existence or price match locally.
+                // The product exists on another chain (Author/Main), and we trust the UI/User input.
+                // Validation will effectively happen at the destination if logic requires, but here we just transfer.
+                
+                // Transfer full amount to author (no commission for now)
+                let target_account_norm = self.normalize_account(target_account);
+                self.runtime.transfer(owner, target_account_norm, amount);
+                
+                // Generate purchase ID
+                let ts = self.runtime.system_time().micros();
+                let purchase_id = format!("purchase-{}-{}", ts, self.runtime.chain_id());
+                let buyer_chain_id = self.runtime.chain_id();
+                let seller = target_account_norm.owner;
+                
+                // Emit event
+                self.runtime.emit("donations_events".into(), &DonationsEvent::ProductPurchased {
+                    purchase_id: purchase_id.clone(),
+                    product_id: product_id.clone(),
+                    buyer: owner,
+                    seller,
+                    amount,
+                    timestamp: ts,
+                });
+                
+                // Send purchase message to main chain
+                if let Ok(main_chain_str) = self.state.subscriptions.get(&owner).await {
+                    if let Some(main_chain_id_str) = main_chain_str {
+                        if let Ok(main_chain_id) = main_chain_id_str.parse() {
+                            self.runtime.prepare_message(Message::ProductPurchased {
+                                purchase_id,
+                                product_id,
+                                buyer: owner,
+                                buyer_chain_id,
+                                seller,
+                                amount,
+                            }).with_authentication().send_to(main_chain_id);
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
         }
     }
 
@@ -149,6 +275,72 @@ impl Contract for DonationsContract {
                 if let Some(n) = name { let _ = self.state.set_name(owner, n).await; }
                 if let Some(b) = bio { let _ = self.state.set_bio(owner, b).await; }
                 for s in socials { let _ = self.state.set_social(owner, s.name, s.url).await; }
+            }
+            Message::ProductCreated { product } => {
+                // Main chain stores product from other chains
+                let _ = self.state.create_product(product).await;
+            }
+            Message::ProductUpdated { product } => {
+                // Main chain updates product
+                let product_id = product.id.clone();
+                let author = product.author;
+                let _ = self.state.delete_product(&product_id, author).await;
+                let _ = self.state.create_product(product).await;
+            }
+            Message::ProductDeleted { product_id, author } => {
+                // Main chain deletes product
+                let _ = self.state.delete_product(&product_id, author).await;
+            }
+            Message::ProductPurchased { purchase_id, product_id, buyer, buyer_chain_id, seller, amount } => {
+                // Main chain receives purchase notification and sends product data to buyer
+                if let Ok(Some(product)) = self.state.get_product(&product_id).await {
+                    // Validate that the paid amount matches the product price
+                    if amount == product.price {
+                        // Send product data to buyer's chain
+                        self.runtime.prepare_message(Message::SendProductData {
+                            buyer,
+                            purchase_id: purchase_id.clone(),
+                            product: product.clone(),
+                        }).with_authentication().send_to(buyer_chain_id);
+                        
+                        // Record purchase on main chain
+                        let ts = self.runtime.system_time().micros();
+                        let purchase = donations::Purchase {
+                            id: purchase_id.clone(),
+                            product_id: product_id.clone(),
+                            buyer,
+                            seller,
+                            amount,
+                            timestamp: ts,
+                            product,
+                        };
+                        let _ = self.state.record_purchase(purchase).await;
+                        
+                        // Emit event so subscribers to Main Chain see the purchase
+                        self.runtime.emit("donations_events".into(), &DonationsEvent::ProductPurchased {
+                            purchase_id: purchase_id.clone(),
+                            product_id: product_id.clone(),
+                            buyer,
+                            seller,
+                            amount,
+                            timestamp: ts,
+                        });
+                    }
+                }
+            }
+            Message::SendProductData { buyer, purchase_id, product } => {
+                // Buyer's chain receives full product data
+                let ts = self.runtime.system_time().micros();
+                let purchase = donations::Purchase {
+                    id: purchase_id,
+                    product_id: product.id.clone(),
+                    buyer,
+                    seller: product.author,
+                    amount: product.price,
+                    timestamp: ts,
+                    product,
+                };
+                let _ = self.state.record_purchase(purchase).await;
             }
         }
     }
@@ -177,6 +369,32 @@ impl DonationsContract {
                     }
                     DonationsEvent::DonationSent { id: _, from, to, amount, message, source_chain_id, timestamp } => {
                         let _ = self.state.record_donation(from, to, amount, message, source_chain_id, timestamp).await;
+                    }
+                    DonationsEvent::ProductCreated { product, timestamp: _ } => {
+                        let _ = self.state.create_product(product).await;
+                    }
+                    DonationsEvent::ProductUpdated { product, timestamp: _ } => {
+                        let product_id = product.id.clone();
+                        let author = product.author;
+                        let _ = self.state.delete_product(&product_id, author).await;
+                        let _ = self.state.create_product(product).await;
+                    }
+                    DonationsEvent::ProductDeleted { product_id, author, timestamp: _ } => {
+                        let _ = self.state.delete_product(&product_id, author).await;
+                    }
+                    DonationsEvent::ProductPurchased { purchase_id, product_id, buyer, seller, amount, timestamp } => {
+                        if let Ok(Some(product)) = self.state.get_product(&product_id).await {
+                            let purchase = donations::Purchase {
+                                id: purchase_id,
+                                product_id,
+                                buyer,
+                                seller,
+                                amount,
+                                timestamp,
+                                product,
+                            };
+                            let _ = self.state.record_purchase(purchase).await;
+                        }
                     }
                 }
             }

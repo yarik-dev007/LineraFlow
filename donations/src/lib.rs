@@ -19,6 +19,29 @@ pub enum Message {
         bio: Option<String>,
         socials: Vec<SocialLink>,
     },
+    ProductCreated {
+        product: Product,
+    },
+    ProductUpdated {
+        product: Product,
+    },
+    ProductDeleted {
+        product_id: String,
+        author: AccountOwner,
+    },
+    ProductPurchased {
+        purchase_id: String,
+        product_id: String,
+        buyer: AccountOwner,
+        buyer_chain_id: ChainId,
+        seller: AccountOwner,
+        amount: Amount,
+    },
+    SendProductData {
+        buyer: AccountOwner,
+        purchase_id: String,
+        product: Product,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, InputObject)]
@@ -92,12 +115,76 @@ pub struct TotalAmountView {
     pub amount: Amount,
 }
 
+// Marketplace structures
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct Product {
+    pub id: String,
+    pub author: AccountOwner,
+    pub author_chain_id: String,
+    pub name: String,
+    pub description: String,
+    pub link: String,
+    pub data_blob_hash: String,
+    pub price: Amount,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, InputObject)]
+pub struct ProductInput {
+    pub name: String,
+    pub description: String,
+    pub link: String,
+    pub data_blob_hash: String,
+    pub price: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct ProductView {
+    pub id: String,
+    pub author: AccountOwner,
+    pub author_chain_id: String,
+    pub name: String,
+    pub description: String,
+    pub link: String,
+    pub data_blob_hash: String,
+    pub price: Amount,
+    pub created_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct Purchase {
+    pub id: String,
+    pub product_id: String,
+    pub buyer: AccountOwner,
+    pub seller: AccountOwner,
+    pub amount: Amount,
+    pub timestamp: u64,
+    pub product: Product,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct PurchaseView {
+    pub id: String,
+    pub product_id: String,
+    pub buyer: AccountOwner,
+    pub buyer_chain_id: String,
+    pub seller: AccountOwner,
+    pub seller_chain_id: String,
+    pub amount: Amount,
+    pub timestamp: u64,
+    pub product: ProductView,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DonationsEvent {
     ProfileNameUpdated { owner: AccountOwner, name: String, timestamp: u64 },
     ProfileBioUpdated { owner: AccountOwner, bio: String, timestamp: u64 },
     ProfileSocialUpdated { owner: AccountOwner, name: String, url: String, timestamp: u64 },
     DonationSent { id: u64, from: AccountOwner, to: AccountOwner, amount: Amount, message: Option<String>, source_chain_id: Option<String>, timestamp: u64 },
+    ProductCreated { product: Product, timestamp: u64 },
+    ProductUpdated { product: Product, timestamp: u64 },
+    ProductDeleted { product_id: String, author: AccountOwner, timestamp: u64 },
+    ProductPurchased { purchase_id: String, product_id: String, buyer: AccountOwner, seller: AccountOwner, amount: Amount, timestamp: u64 },
 }
 
 pub struct DonationsAbi;
@@ -127,6 +214,30 @@ pub enum Operation {
     GetProfile { owner: AccountOwner },
     GetDonationsByRecipient { owner: AccountOwner },
     GetDonationsByDonor { owner: AccountOwner },
+    CreateProduct {
+        name: String,
+        description: String,
+        link: String,
+        data_blob_hash: String,
+        price: Amount,
+    },
+    UpdateProduct {
+        product_id: String,
+        name: Option<String>,
+        description: Option<String>,
+        link: Option<String>,
+        data_blob_hash: Option<String>,
+        price: Option<Amount>,
+    },
+    DeleteProduct {
+        product_id: String,
+    },
+    TransferToBuy {
+        owner: AccountOwner,
+        product_id: String,
+        amount: Amount,
+        target_account: linera_sdk::abis::fungible::Account,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]

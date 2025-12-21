@@ -297,6 +297,163 @@ impl QueryRoot {
             Err(_) => TotalAmountView { owner, chain_id: self.runtime.chain_id().to_string(), amount: Amount::ZERO },
         }
     }
+
+    // Marketplace queries
+    async fn all_products(&self) -> Vec<donations::ProductView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.products.indices().await {
+                    Ok(ids) => {
+                        let mut res = Vec::new();
+                        for id in ids {
+                            if let Ok(Some(p)) = state.products.get(&id).await {
+                                res.push(donations::ProductView {
+                                    id: p.id,
+                                    author: p.author,
+                                    author_chain_id: p.author_chain_id,
+                                    name: p.name,
+                                    description: p.description,
+                                    link: p.link,
+                                    data_blob_hash: p.data_blob_hash,
+                                    price: p.price,
+                                    created_at: p.created_at,
+                                });
+                            }
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn products_by_author(&self, owner: AccountOwner) -> Vec<donations::ProductView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.list_products_by_author(owner).await {
+                    Ok(products) => {
+                        products.into_iter().map(|p| donations::ProductView {
+                            id: p.id,
+                            author: p.author,
+                            author_chain_id: p.author_chain_id,
+                            name: p.name,
+                            description: p.description,
+                            link: p.link,
+                            data_blob_hash: p.data_blob_hash,
+                            price: p.price,
+                            created_at: p.created_at,
+                        }).collect()
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn product(&self, id: String) -> Option<donations::ProductView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.get_product(&id).await {
+                    Ok(Some(p)) => Some(donations::ProductView {
+                        id: p.id,
+                        author: p.author,
+                        author_chain_id: p.author_chain_id,
+                        name: p.name,
+                        description: p.description,
+                        link: p.link,
+                        data_blob_hash: p.data_blob_hash,
+                        price: p.price,
+                        created_at: p.created_at,
+                    }),
+                    _ => None,
+                }
+            },
+            Err(_) => None,
+        }
+    }
+
+    async fn purchases(&self, owner: AccountOwner) -> Vec<donations::PurchaseView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.list_purchases_by_buyer(owner).await {
+                    Ok(purchases) => {
+                        let mut res = Vec::new();
+                        for pur in purchases {
+                            let buyer_chain_id = state.subscriptions.get(&pur.buyer).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            let seller_chain_id = state.subscriptions.get(&pur.seller).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            res.push(donations::PurchaseView {
+                                id: pur.id,
+                                product_id: pur.product_id,
+                                buyer: pur.buyer,
+                                buyer_chain_id,
+                                seller: pur.seller,
+                                seller_chain_id,
+                                amount: pur.amount,
+                                timestamp: pur.timestamp,
+                                product: donations::ProductView {
+                                    id: pur.product.id,
+                                    author: pur.product.author,
+                                    author_chain_id: pur.product.author_chain_id,
+                                    name: pur.product.name,
+                                    description: pur.product.description,
+                                    link: pur.product.link,
+                                    data_blob_hash: pur.product.data_blob_hash,
+                                    price: pur.product.price,
+                                    created_at: pur.product.created_at,
+                                },
+                            });
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    async fn my_purchases(&self, owner: AccountOwner) -> Vec<donations::PurchaseView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.list_purchases_by_buyer(owner).await {
+                    Ok(purchases) => {
+                        let mut res = Vec::new();
+                        for pur in purchases {
+                            let buyer_chain_id = state.subscriptions.get(&pur.buyer).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            let seller_chain_id = state.subscriptions.get(&pur.seller).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                            res.push(donations::PurchaseView {
+                                id: pur.id,
+                                product_id: pur.product_id,
+                                buyer: pur.buyer,
+                                buyer_chain_id,
+                                seller: pur.seller,
+                                seller_chain_id,
+                                amount: pur.amount,
+                                timestamp: pur.timestamp,
+                                product: donations::ProductView {
+                                    id: pur.product.id,
+                                    author: pur.product.author,
+                                    author_chain_id: pur.product.author_chain_id,
+                                    name: pur.product.name,
+                                    description: pur.product.description,
+                                    link: pur.product.link,
+                                    data_blob_hash: pur.product.data_blob_hash,
+                                    price: pur.product.price,
+                                    created_at: pur.product.created_at,
+                                },
+                            });
+                        }
+                        res
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 struct MutationRoot { runtime: Arc<ServiceRuntime<DonationsService>> }
@@ -314,6 +471,48 @@ impl MutationRoot {
     async fn register(&self, main_chain_id: String, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>) -> String {
         let chain_id = main_chain_id.parse().unwrap();
         self.runtime.schedule_operation(&Operation::Register { main_chain_id: chain_id, name, bio, socials });
+        "ok".to_string()
+    }
+
+    // Marketplace mutations
+    async fn create_product(&self, name: String, description: String, link: String, data_blob_hash: String, price: String) -> String {
+        let amount = price.parse::<Amount>().unwrap_or_default();
+        self.runtime.schedule_operation(&Operation::CreateProduct {
+            name,
+            description,
+            link,
+            data_blob_hash,
+            price: amount,
+        });
+        "ok".to_string()
+    }
+
+    async fn update_product(&self, product_id: String, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, price: Option<String>) -> String {
+        let price_amount = price.and_then(|p| p.parse::<Amount>().ok());
+        self.runtime.schedule_operation(&Operation::UpdateProduct {
+            product_id,
+            name,
+            description,
+            link,
+            data_blob_hash,
+            price: price_amount,
+        });
+        "ok".to_string()
+    }
+
+    async fn delete_product(&self, product_id: String) -> String {
+        self.runtime.schedule_operation(&Operation::DeleteProduct { product_id });
+        "ok".to_string()
+    }
+
+    async fn transfer_to_buy(&self, owner: AccountOwner, product_id: String, amount: String, target_account: AccountInput) -> String {
+        let fungible_account = linera_sdk::abis::fungible::Account { chain_id: target_account.chain_id, owner: target_account.owner };
+        self.runtime.schedule_operation(&Operation::TransferToBuy {
+            owner,
+            product_id,
+            amount: amount.parse::<Amount>().unwrap_or_default(),
+            target_account: fungible_account,
+        });
         "ok".to_string()
     }
 }
