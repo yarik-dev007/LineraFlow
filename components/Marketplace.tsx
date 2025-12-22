@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Plus, Search, Filter } from 'lucide-react';
+import { useParams } from 'react-router-dom';
 import ProductList from './ProductList';
 import CreateProductModal from './CreateProductModal';
 import { Product } from '../types';
@@ -9,9 +10,19 @@ interface MarketplaceProps {
 }
 
 const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
+    const { ownerId } = useParams<{ ownerId: string }>();
+
     const [activeTab, setActiveTab] = useState<'BROWSE' | 'MY_ITEMS'>('BROWSE');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+
+    // Set initial filter based on URL
+    useEffect(() => {
+        if (ownerId) {
+            setSearchQuery('');
+            // Logic to filter by owner is in filteredProducts below
+        }
+    }, [ownerId]);
 
     // MOCK DATA
     const [products, setProducts] = useState<Product[]>([
@@ -41,7 +52,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         }
     ]);
 
-    const handleCreateProduct = (data: { name: string; description: string; price: string; image?: string }) => {
+    const handleCreateProduct = (data: { name: string; description: string; price: string; image?: string; fileHash?: string; fileName?: string }) => {
         const newProduct: Product = {
             id: `prod_${Date.now()}`,
             name: data.name,
@@ -50,7 +61,10 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             author: currentUserAddress || 'Anonymous',
             authorAddress: currentUserAddress,
             image: data.image
+            // In a real app we would store fileHash/fileName too, adding to mock type if needed or just logging for now
         };
+
+        console.log('Created Product with Blob:', data.fileHash);
 
         setProducts([newProduct, ...products]);
         setIsCreateModalOpen(false);
@@ -67,6 +81,12 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     };
 
     const filteredProducts = products.filter(p => {
+        // If URL has ownerId, filter by that AUTHOR only
+        if (ownerId) {
+            return p.author === ownerId || p.authorAddress === ownerId;
+        }
+
+        // Otherwise standard filters
         const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.description.toLowerCase().includes(searchQuery.toLowerCase());
 

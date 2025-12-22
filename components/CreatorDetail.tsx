@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { Creator } from '../types';
+import { useNavigate } from 'react-router-dom';
+import { ShoppingBag } from 'lucide-react';
 
 interface CreatorDetailProps {
     creator: Creator;
@@ -9,6 +11,8 @@ interface CreatorDetailProps {
 }
 
 const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, onBack, onDonate }) => {
+    const navigate = useNavigate();
+
     // Filter and get last 3 donations for this creator in realtime
     const recentDonations = useMemo(() => {
         return allDonations
@@ -58,12 +62,22 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
                             <p className="font-mono text-xs md:text-sm text-gray-500 break-all">{creator.contractAddress || '0x88a...Contract'}</p>
                         </div>
 
-                        <button
-                            onClick={onDonate}
-                            className="w-full md:w-auto bg-deep-black text-white font-display text-lg md:text-xl uppercase px-6 py-4 border-4 border-transparent hover:bg-linera-red hover:shadow-[4px_4px_0px_0px_#000] transition-all"
-                        >
-                            DONATE
-                        </button>
+                        <div className="flex gap-4 w-full md:w-auto">
+                            <button
+                                onClick={() => navigate(`/owner/${creator.contractAddress}`)}
+                                className="flex-1 md:flex-none bg-white text-deep-black font-mono font-bold uppercase px-6 py-4 border-4 border-deep-black hover:bg-gray-100 transition-all flex items-center gap-2"
+                            >
+                                <ShoppingBag className="w-5 h-5" />
+                                Store
+                            </button>
+
+                            <button
+                                onClick={onDonate}
+                                className="flex-1 md:flex-none bg-deep-black text-white font-display text-lg md:text-xl uppercase px-6 py-4 border-4 border-transparent hover:bg-linera-red hover:shadow-[4px_4px_0px_0px_#000] transition-all"
+                            >
+                                DONATE
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
