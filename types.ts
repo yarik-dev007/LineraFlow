@@ -31,6 +31,16 @@ export interface Creator {
   donations?: any[];
 }
 
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  author: string;
+  authorAddress?: string;
+  image?: string;
+}
+
 export enum InteractionState {
   IDLE = 'IDLE',
   HOVER = 'HOVER',
@@ -38,4 +48,4 @@ export enum InteractionState {
   LOADING = 'LOADING'
 }
 
-export type AppView = 'LANDING' | 'EXPLORE' | 'PROFILE' | 'CREATOR_DETAIL';
+export type AppView = 'LANDING' | 'EXPLORE' | 'PROFILE' | 'CREATOR_DETAIL' | 'MARKETPLACE';

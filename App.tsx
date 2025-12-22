@@ -11,6 +11,9 @@ import AlertPopup from './components/AlertPopup';
 import LandingPage from './components/LandingPage';
 import { WalletState, UserProfile, AppView, Creator } from './types';
 import { pb } from './components/pocketbase';
+import Marketplace from './components/Marketplace';
+
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 const AppContent: React.FC = () => {
   const {
@@ -23,10 +26,18 @@ const AppContent: React.FC = () => {
     application
   } = useLinera();
 
-  const [view, setView] = useState<AppView>('LANDING');
+  // Navigation State (removed view state, using router)
+  const location = useLocation();
+  const navigate = useNavigate();
+
   const [isWalletOpen, setIsWalletOpen] = useState(false);
   const [creators, setCreators] = useState<Creator[]>([]);
-  const [viewingCreator, setViewingCreator] = useState<Creator | null>(null);
+  const [viewingCreator, setViewingCreator] = useState<Creator | null>(null); // Still needed for passed props if not using URL for details yet, but plan says /item/:itemId. For now keeping creator detail as is or refactoring? The plan said /owner/:id. CreatorDetail is usually a modal or sub-view. Let's keep it simple for now or fully route it.
+  // Actually, CreatorDetail was a view 'CREATOR_DETAIL'. Let's make it a route /creator/:id?
+  // User asked for: /owner/owner_here/item/item-idhere and /owner/owner_here on marketplace.
+  // Existing CreatorDetail is for *donations*. Let's keep it at /creator/:id for consistency? Or just keep it as is?
+  // To match the existing flow: Landing -> Explore -> CreatorDetail.
+
   const [donationTarget, setDonationTarget] = useState<Creator | null>(null);
   const [profile, setProfile] = useState<UserProfile>({
     displayName: 'Anon User',
@@ -45,7 +56,6 @@ const AppContent: React.FC = () => {
   }>({ isOpen: false, message: '' });
 
   const [myDonations, setMyDonations] = useState<any[]>([]);
-
   const [allDonations, setAllDonations] = useState<any[]>([]);
 
   // Map Linera state to WalletState for compatibility
@@ -127,7 +137,7 @@ const AppContent: React.FC = () => {
     }
   }, [accountOwner, allDonations]);
 
-  // 3. Check if user has profile (Directly from Linera for immediate consistency)
+  // 3. Check if user has profile
   useEffect(() => {
     const checkProfile = async () => {
       if (!accountOwner || !application) {
@@ -136,7 +146,6 @@ const AppContent: React.FC = () => {
       }
 
       try {
-        // Query Linera state directly
         const query = `query {
           profile(owner: "${accountOwner}") {
             name
@@ -171,18 +180,13 @@ const AppContent: React.FC = () => {
     setTimeout(() => setIsInteracting(false), 1000);
   };
 
-  const handleMint = () => {
-    // Mint logic is handled in WalletHUD
-  };
-
-  const handleWithdraw = () => {
-    // Withdraw logic is handled in WalletHUD
-  };
+  const handleMint = () => { };
+  const handleWithdraw = () => { };
 
   const handleSaveProfile = (newProfile: UserProfile) => {
     console.log('✅ Profile saved locally, updating state...');
     setProfile(newProfile);
-    setHasProfile(true); // Immediate update after successful save
+    setHasProfile(true);
     setIsInteracting(true);
     setTimeout(() => setIsInteracting(false), 1000);
   };
@@ -195,7 +199,9 @@ const AppContent: React.FC = () => {
 
   const handleSelectCreator = (creator: Creator) => {
     setViewingCreator(creator);
-    setView('CREATOR_DETAIL');
+    // Since CreatorDetail is not fully routed yet in the original logic (it was a view),
+    // let's keep it simple: We probably want a route for it too.
+    navigate(`/creator/${creator.id}`);
   };
 
   const handleDonateClick = (creator: Creator) => {
@@ -205,7 +211,7 @@ const AppContent: React.FC = () => {
         message: 'Access Denied. Protocol requires identity verification before transmission.',
         actionLabel: 'INITIALIZE IDENTITY',
         onAction: () => {
-          setView('PROFILE');
+          navigate('/profile');
           setAlertConfig(prev => ({ ...prev, isOpen: false }));
         }
       });
@@ -214,67 +220,77 @@ const AppContent: React.FC = () => {
     setDonationTarget(creator);
   };
 
+  // Decide current view for Sidebar based on path
+  const currentView = location.pathname === '/profile' ? 'PROFILE'
+    : location.pathname.startsWith('/marketplace') || location.pathname.startsWith('/owner') ? 'MARKETPLACE'
+      : 'EXPLORE';
+
   return (
     <div className="min-h-screen w-full bg-paper-white bg-grid-pattern relative overflow-x-hidden selection:bg-linera-red selection:text-white font-sans">
 
-      {/* Background Canvas Animation - Remains fixed for landing page effect */}
       <ParallelPulse isInteracting={isInteracting} />
 
-      {/* LANDING PAGE */}
-      {view === 'LANDING' && (
-        <LandingPage onEnter={() => setView('EXPLORE')} />
-      )}
+      <Routes>
+        <Route path="/landing" element={<LandingPage onEnter={() => navigate('/')} />} />
 
-      {/* APP MODE */}
-      {view !== 'LANDING' && (
-        <div className="relative z-10 min-h-screen flex flex-col lg:flex-row">
-          {/* Sidebar Navigation */}
-          <Sidebar
-            currentView={view}
-            setView={setView}
-            wallet={walletState}
-            onToggleWallet={() => {
-              if (!walletState.isConnected) {
-                handleConnectWallet();
-              }
-              setIsWalletOpen(true);
-            }}
-          />
+        {/* Main Routes with Layout */}
+        <Route path="/*" element={
+          <div className="relative z-10 min-h-screen flex flex-col lg:flex-row">
+            <Sidebar
+              currentView={currentView}
+              setView={(view) => {
+                if (view === 'LANDING') navigate('/landing');
+                else if (view === 'PROFILE') navigate('/profile');
+                else if (view === 'MARKETPLACE') navigate('/marketplace');
+                else navigate('/');
+              }}
+              wallet={walletState}
+              onToggleWallet={() => {
+                if (!walletState.isConnected) handleConnectWallet();
+                setIsWalletOpen(true);
+              }}
+            />
 
-          {/* Main Content Area */}
-          <main className="flex-1 ml-0 lg:ml-64 p-4 md:p-8 lg:p-12 pb-24 lg:pb-12 transition-all duration-300">
-            {view === 'EXPLORE' && (
-              <CreatorExplorer
-                creators={creators}
-                onSelectCreator={handleSelectCreator}
-                currentUserAddress={accountOwner || undefined}
-              />
-            )}
+            <main className="flex-1 ml-0 lg:ml-64 p-4 md:p-8 lg:p-12 pb-24 lg:pb-12 transition-all duration-300">
+              <Routes>
+                <Route path="/" element={
+                  <CreatorExplorer
+                    creators={creators}
+                    onSelectCreator={handleSelectCreator}
+                    currentUserAddress={accountOwner || undefined}
+                  />
+                } />
+                <Route path="/creator/:id" element={
+                  viewingCreator ? (
+                    <CreatorDetail
+                      creator={viewingCreator}
+                      allDonations={allDonations}
+                      onBack={() => navigate('/')}
+                      onDonate={() => handleDonateClick(viewingCreator)}
+                    />
+                  ) : <Navigate to="/" />
+                } />
+                <Route path="/profile" element={
+                  <div className="flex items-start justify-center h-full">
+                    <ProfileEditor
+                      initialProfile={profile}
+                      onSave={handleSaveProfile}
+                      donations={myDonations}
+                    />
+                  </div>
+                } />
 
-            {view === 'CREATOR_DETAIL' && viewingCreator && (
-              <CreatorDetail
-                creator={viewingCreator}
-                allDonations={allDonations}
-                onBack={() => setView('EXPLORE')}
-                onDonate={() => handleDonateClick(viewingCreator)}
-              />
-            )}
+                {/* Marketplace Routes */}
+                <Route path="/marketplace" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
+                <Route path="/owner/:ownerId" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
 
-            {view === 'PROFILE' && (
-              <div className="flex items-start justify-center h-full">
-                <ProfileEditor
-                  initialProfile={profile}
-                  onSave={handleSaveProfile}
-                  donations={myDonations}
-                />
-              </div>
-            )}
-          </main>
-        </div>
-      )}
+              </Routes>
+            </main>
+          </div>
+        } />
+      </Routes>
 
       {/* OVERLAYS */}
-      {/* Wallet HUD */}
       {isWalletOpen && (
         <WalletHUD
           onClose={() => setIsWalletOpen(false)}
@@ -293,7 +309,6 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Custom Alert Popup */}
       {alertConfig.isOpen && (
         <AlertPopup
           message={alertConfig.message}
@@ -310,7 +325,9 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <LineraProvider>
-      <AppContent />
+      <Router>
+        <AppContent />
+      </Router>
     </LineraProvider>
   );
 };

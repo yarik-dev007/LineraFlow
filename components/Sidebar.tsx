@@ -13,6 +13,7 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggleWallet }) => {
   const navItems = [
     { id: 'EXPLORE', label: 'EXPLORE', icon: '○' },
+    { id: 'MARKETPLACE', label: 'MARKET', icon: '◇' },
     { id: 'PROFILE', label: 'IDENTITY', icon: '□' },
   ];
 
