@@ -10,10 +10,11 @@ interface ProductCardProps {
     onEdit?: (product: Product) => void;
     onDelete?: (product: Product) => void;
     onDownload?: (product: Product) => void;
-    onView?: (product: Product) => Promise<string | null>; // New prop to fetch blob URL
+    onView?: (product: Product) => Promise<string | null>;
+    activeTab?: 'BROWSE' | 'MY_ITEMS' | 'PURCHASES';
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView, activeTab = 'BROWSE' }) => {
     const [localUrl, setLocalUrl] = React.useState<string | null>(null);
     const [isViewLoading, setIsViewLoading] = React.useState(false);
 
@@ -87,48 +88,52 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
 
                 {/* Actions */}
                 <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col gap-2">
-                    {isOwner || isPurchased ? (
-                        <>
-                            <div className="flex gap-2 w-full">
-                                <button
-                                    onClick={handleView}
-                                    disabled={isViewLoading}
-                                    className="flex-1 bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
-                                >
-                                    {isViewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} View
-                                </button>
-                                <button
-                                    onClick={() => onDownload?.(product)}
-                                    className="flex-1 bg-linera-red text-white hover:bg-deep-black border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                                >
-                                    <ExternalLink className="w-4 h-4" /> Download
-                                </button>
-                            </div>
-                            {isOwner && (
-                                <div className="flex gap-2 w-full mt-1">
-                                    <button
-                                        onClick={() => onEdit?.(product)}
-                                        className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-500 py-1.5 px-3 text-[10px] font-bold font-mono uppercase flex items-center justify-center gap-1 transition-colors"
-                                    >
-                                        <Edit className="w-3 h-3" /> Edit Item
-                                    </button>
-                                    <button
-                                        onClick={() => onDelete?.(product)}
-                                        className="bg-white border border-gray-300 hover:bg-red-50 text-red-400 py-1.5 px-3 text-[10px] uppercase font-mono transition-colors flex items-center gap-1"
-                                        title="Delete Product"
-                                    >
-                                        <Trash2 className="w-3 h-3" /> Remove
-                                    </button>
-                                </div>
-                            )}
-                        </>
+                    {activeTab === 'PURCHASES' ? (
+                        <div className="flex gap-2 w-full">
+                            <button
+                                onClick={handleView}
+                                disabled={isViewLoading}
+                                className="flex-1 bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+                            >
+                                {isViewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} View
+                            </button>
+                            <button
+                                onClick={() => onDownload?.(product)}
+                                className="flex-1 bg-linera-red text-white hover:bg-deep-black border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            >
+                                <ExternalLink className="w-4 h-4" /> Download
+                            </button>
+                        </div>
+                    ) : activeTab === 'MY_ITEMS' ? (
+                        <div className="flex gap-2 w-full">
+                            <button
+                                onClick={() => onEdit?.(product)}
+                                className="flex-1 bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            >
+                                <Edit className="w-4 h-4" /> Edit
+                            </button>
+                            <button
+                                onClick={() => onDelete?.(product)}
+                                className="bg-white border-2 border-deep-black hover:bg-red-50 text-red-600 py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                title="Delete Product"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        </div>
                     ) : (
-                        <button
-                            onClick={() => onBuy?.(product)}
-                            className="flex-1 bg-deep-black text-white hover:bg-linera-red border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                        >
-                            <ShoppingCart className="w-4 h-4" /> Buy Now
-                        </button>
+                        // BROWSE Tab
+                        isOwner ? (
+                            <div className="text-gray-400 text-xs font-mono uppercase py-2 text-center border-2 border-dashed border-gray-200 w-full mb-1 bg-gray-50/50">
+                                Your Product
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => onBuy?.(product)}
+                                className="flex-1 bg-deep-black text-white hover:bg-linera-red border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                            >
+                                <ShoppingCart className="w-4 h-4" /> Buy Now
+                            </button>
+                        )
                     )}
                 </div>
             </div>

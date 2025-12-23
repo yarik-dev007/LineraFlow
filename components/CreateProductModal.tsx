@@ -1,26 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, Image as ImageIcon } from 'lucide-react';
 import { useLinera } from './LineraProvider';
+import { Product } from '../types';
 
 interface CreateProductModalProps {
     onClose: () => void;
     onCreate: (data: { name: string; description: string; price: string; image?: string; fileHash?: string; fileName?: string }) => void;
     isLoading?: boolean;
+    initialData?: Product;
 }
 
-const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCreate, isLoading }) => {
+const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCreate, isLoading, initialData }) => {
     const { accountOwner, application } = useLinera();
 
-    const [name, setName] = useState('');
-    const [description, setDescription] = useState('');
-    const [price, setPrice] = useState('');
-    const [image, setImage] = useState('');
+    const [name, setName] = useState(initialData?.name || '');
+    const [description, setDescription] = useState(initialData?.description || '');
+    const [price, setPrice] = useState(initialData?.price?.toString() || '');
+    const [image, setImage] = useState(initialData?.image || '');
     const [file, setFile] = useState<File | null>(null);
     const [previewFile, setPreviewFile] = useState<File | null>(null);
 
-    const [uploadStatus, setUploadStatus] = useState<string>('');
-    const [blobHash, setBlobHash] = useState<string>('');
-    const [previewBlobHash, setPreviewBlobHash] = useState<string>('');
+    const [uploadStatus, setUploadStatus] = useState<string>(initialData ? 'Mode: Edit Item' : '');
+    const [blobHash, setBlobHash] = useState<string>(initialData?.data_blob_hash || '');
+    const [previewBlobHash, setPreviewBlobHash] = useState<string>(initialData?.image_preview_hash || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [activeUpload, setActiveUpload] = useState<'product' | 'preview' | null>(null);
 
@@ -119,7 +121,19 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
 
         try {
             // 1. Execute Blockchain Mutation
-            const mutation = `
+            const mutation = initialData ? `
+                mutation {
+                    updateProduct(
+                        productId: "${initialData.id}",
+                        name: "${name}",
+                        description: "${description}",
+                        price: "${price}",
+                        link: "${image || ''}",
+                        dataBlobHash: "${blobHash || ''}",
+                        imagePreviewHash: "${previewBlobHash || ''}"
+                    )
+                }
+            ` : `
                 mutation {
                     createProduct(
                         name: "${name}",
@@ -179,7 +193,9 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
 
                 {/* Header */}
                 <div className="bg-linera-red text-white p-4 border-b-4 border-deep-black flex justify-between items-center">
-                    <h2 className="font-display text-xl uppercase tracking-wider">List New Digital Item</h2>
+                    <h2 className="font-display text-xl uppercase tracking-wider">
+                        {initialData ? 'Edit Digital Item' : 'List New Digital Item'}
+                    </h2>
                     <button onClick={onClose} className="hover:rotate-90 transition-transform">
                         <X className="w-6 h-6" />
                     </button>
@@ -300,7 +316,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                             disabled={isLoading || isSubmitting || (file && !blobHash) || (previewFile && !previewBlobHash)}
                             className="flex-1 bg-linera-red text-white px-4 py-3 border-2 border-deep-black font-bold uppercase shadow-[4px_4px_0px_0px_#000000] hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isLoading || isSubmitting ? 'Listing...' : 'List Item'}
+                            {isLoading || isSubmitting ? (initialData ? 'Updating...' : 'Listing...') : (initialData ? 'Update Item' : 'List Item')}
                         </button>
                     </div>
 

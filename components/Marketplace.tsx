@@ -20,6 +20,8 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [products, setProducts] = useState<Product[]>([]);
     const [purchases, setPurchases] = useState<Product[]>([]);
+    const [myProducts, setMyProducts] = useState<Product[]>([]);
+    const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
     // Set initial filter based on URL
@@ -72,6 +74,67 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         }
     };
 
+    const enrichProductsWithMetadata = async (onChainProducts: any[]): Promise<Product[]> => {
+        const productIds = Array.from(new Set(onChainProducts.map((p: any) => p.id)));
+        let pbRecords: any[] = [];
+
+        if (productIds.length > 0) {
+            const filter = productIds.map(id => `product_id="${id}"`).join('||');
+            try {
+                pbRecords = await pb.collection('products').getFullList({ filter });
+            } catch (err) {
+                console.warn('⚠️ [Marketplace] Failed to fetch metadata from PocketBase:', err);
+            }
+        }
+
+        return onChainProducts.map((p: any) => {
+            const pbProduct = pbRecords.find(r => r.product_id === p.id);
+            return {
+                id: p.id,
+                pbId: pbProduct?.id,
+                collectionId: pbProduct?.collectionId,
+                name: p.name,
+                description: p.description,
+                price: parseFloat(p.price || '0'),
+                author: p.author,
+                authorAddress: p.author,
+                authorChainId: p.authorChainId,
+                image: p.link,
+                image_preview: pbProduct?.image_preview,
+                image_preview_hash: p.imagePreviewHash || p.image_preview_hash,
+                data_blob_hash: p.dataBlobHash || p.data_blob_hash,
+            };
+        });
+    };
+
+    const fetchMyProducts = async (silent = false) => {
+        if (!application || !accountOwner) return;
+
+        try {
+            if (!silent) setIsLoading(true);
+            console.log('👷 [My Items] Fetching from chain for:', accountOwner);
+            const query = `query {
+                productsByAuthor(owner: "${accountOwner}") {
+                    id, author, authorChainId, name, description, price, imagePreviewHash, dataBlobHash
+                }
+            }`;
+
+            const result: any = await application.query(JSON.stringify({ query }));
+            let parsedResult = result;
+            if (typeof result === 'string') parsedResult = JSON.parse(result);
+
+            const rawProducts = parsedResult?.data?.productsByAuthor || parsedResult?.productsByAuthor || [];
+            console.log(`📊 [My Items] Found ${rawProducts.length} products on chain`);
+
+            const enriched = await enrichProductsWithMetadata(rawProducts);
+            setMyProducts(enriched);
+        } catch (e) {
+            console.error('Error fetching my products:', e);
+        } finally {
+            if (!silent) setIsLoading(false);
+        }
+    };
+
     const fetchPurchases = async (silent = false) => {
         if (!application || !accountOwner) return;
 
@@ -85,48 +148,14 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             }`;
 
             const result: any = await application.query(JSON.stringify({ query }));
-
             let parsedResult = result;
-            if (typeof result === 'string') {
-                parsedResult = JSON.parse(result);
-            }
+            if (typeof result === 'string') parsedResult = JSON.parse(result);
 
             const rawPurchases = parsedResult?.data?.myPurchases || parsedResult?.myPurchases || [];
-            console.log(`🛍️ [Purchases] Found ${rawPurchases.length} purchases`);
+            const onChainProducts = rawPurchases.map((pur: any) => pur.product);
 
-            // Fetch metadata from PocketBase for all purchased products to get images/ids
-            const productIds = Array.from(new Set(rawPurchases.map((pur: any) => pur.product.id)));
-            let pbRecords: any[] = [];
-            if (productIds.length > 0) {
-                const filter = productIds.map(id => `product_id="${id}"`).join('||');
-                try {
-                    pbRecords = await pb.collection('products').getFullList({ filter });
-                    console.log(`🖼️ [Purchases] Synced ${pbRecords.length} product metadata records from PocketBase`);
-                } catch (err) {
-                    console.warn('⚠️ [Purchases] Failed to fetch metadata from PocketBase:', err);
-                }
-            }
-
-            const mappedPurchases: Product[] = rawPurchases.map((pur: any) => {
-                const pbProduct = pbRecords.find(r => r.product_id === pur.product.id);
-
-                return {
-                    id: pur.product.id,
-                    pbId: pbProduct?.id, // Use .id from record
-                    collectionId: pbProduct?.collectionId,
-                    name: pur.product.name,
-                    description: pur.product.description,
-                    price: parseFloat(pur.product.price || '0'),
-                    author: pur.product.author,
-                    authorAddress: pur.product.author,
-                    authorChainId: pur.product.authorChainId,
-                    image_preview: pbProduct?.image_preview,
-                    image_preview_hash: pur.product.imagePreviewHash,
-                    data_blob_hash: pur.product.dataBlobHash,
-                };
-            });
-
-            setPurchases(mappedPurchases);
+            const enriched = await enrichProductsWithMetadata(onChainProducts);
+            setPurchases(enriched);
         } catch (e) {
             console.error('Error fetching purchases:', e);
         } finally {
@@ -139,13 +168,16 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             // Only show loader if we have NO data yet
             const hasNoProducts = products.length === 0;
             const hasNoPurchases = activeTab === 'PURCHASES' && purchases.length === 0;
+            const hasNoMyItems = activeTab === 'MY_ITEMS' && myProducts.length === 0;
 
-            const silent = !hasNoProducts && !hasNoPurchases;
+            const silent = !hasNoProducts && !hasNoPurchases && !hasNoMyItems;
 
             if (!silent) setIsLoading(true);
             await fetchProducts(true);
             if (activeTab === 'PURCHASES') {
                 await fetchPurchases(true);
+            } else if (activeTab === 'MY_ITEMS') {
+                await fetchMyProducts(true);
             }
             if (!silent) setIsLoading(false);
         };
@@ -154,22 +186,47 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
 
     const handleCreateProduct = (data: { name: string; description: string; price: string; image?: string; fileHash?: string; fileName?: string }) => {
         setIsCreateModalOpen(false);
+        setEditingProduct(null);
+        // Refresh after a delay to allow indexer to sync
+        setTimeout(() => {
+            if (activeTab === 'MY_ITEMS') fetchMyProducts(true);
+            else fetchProducts(true);
+        }, 2000);
     };
 
     const handleDeleteProduct = async (product: Product) => {
-        if (!product.pbId) {
-            alert('Cannot delete: PocketBase ID missing.');
-            return;
-        }
+        if (!application || !accountOwner) return;
 
-        if (window.confirm(`Delete "${product.name}"?`)) {
+        if (window.confirm(`Delete "${product.name}"? This will remove it from the blockchain.`)) {
             try {
-                await pb.collection('products').delete(product.pbId);
-            } catch (e) {
+                setIsLoading(true);
+                const mutation = `
+                    mutation {
+                        deleteProduct(productId: "${product.id}")
+                    }
+                `;
+                console.log('🗑️ [Marketplace] Sending delete mutation:', mutation);
+                const result = await application.query(JSON.stringify({ query: mutation }));
+                console.log('✅ [Marketplace] Delete result:', result);
+
+                alert('Delete operation scheduled!');
+                // Wait for sync and refresh
+                setTimeout(() => {
+                    if (activeTab === 'MY_ITEMS') fetchMyProducts(true);
+                    else fetchProducts(true);
+                }, 2000);
+            } catch (e: any) {
                 console.error('Failed to delete product:', e);
-                alert('Failed to delete product.');
+                alert(`Failed to delete: ${e.message}`);
+            } finally {
+                setIsLoading(false);
             }
         }
+    };
+
+    const handleEditProduct = (product: Product) => {
+        setEditingProduct(product);
+        setIsCreateModalOpen(true);
     };
 
     const handleBuyProduct = async (product: Product) => {
@@ -317,33 +374,25 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         }
     };
 
-    const displayProducts = activeTab === 'PURCHASES' ? purchases : products;
+    const displayProducts = activeTab === 'PURCHASES' ? purchases : (activeTab === 'MY_ITEMS' ? myProducts : products);
 
     const filteredProducts = displayProducts.filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.description.toLowerCase().includes(searchQuery.toLowerCase());
 
-        // 1. If we are in PURCHASES, we already have the correct list (from fetchPurchases)
-        if (activeTab === 'PURCHASES') {
+        // 1. If we are in PURCHASES or MY_ITEMS, we already have the correct list (from chain queries)
+        if (activeTab === 'PURCHASES' || activeTab === 'MY_ITEMS') {
             return matchesSearch;
         }
 
-        // 2. If we are in MY_ITEMS, priority is current user's items
-        if (activeTab === 'MY_ITEMS') {
-            if (!currentUserAddress) return false;
-            const myAddress = currentUserAddress.toLowerCase();
-            const isMine = p.author?.toLowerCase() === myAddress || p.authorAddress?.toLowerCase() === myAddress;
-            return matchesSearch && isMine;
-        }
-
-        // 3. BROWSE tab - handle ownerId override for creator profile view
+        // 2. BROWSE tab - handle ownerId override for creator profile view
         if (ownerId) {
             const targetOwner = ownerId.toLowerCase();
             const isFromOwner = p.author?.toLowerCase() === targetOwner || p.authorAddress?.toLowerCase() === targetOwner;
             return matchesSearch && isFromOwner;
         }
 
-        // 4. Default BROWSE
+        // 3. Default BROWSE
         return matchesSearch;
     });
 
@@ -358,7 +407,10 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
 
                 <div className="flex gap-2">
                     <button
-                        onClick={() => setIsCreateModalOpen(true)}
+                        onClick={() => {
+                            setEditingProduct(null);
+                            setIsCreateModalOpen(true);
+                        }}
                         className="bg-linera-red text-white flex items-center gap-2 px-6 py-3 font-mono font-bold uppercase transition-all hover:-translate-y-1 hover:shadow-[4px_4px_0px_0px_#000000] border-2 border-deep-black"
                     >
                         <Plus className="w-5 h-5" />
@@ -411,18 +463,23 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                     products={filteredProducts}
                     currentUserAddress={currentUserAddress}
                     onBuy={handleBuyProduct}
-                    onEdit={() => { }}
+                    onEdit={handleEditProduct}
                     onDelete={handleDeleteProduct}
                     onDownload={handleDownloadProduct}
                     onView={handleViewProduct}
+                    activeTab={activeTab}
                     isPurchased={activeTab === 'PURCHASES'}
                 />
             )}
 
-            {/* Create Modal */}
+            {/* Create/Edit Modal */}
             {isCreateModalOpen && (
                 <CreateProductModal
-                    onClose={() => setIsCreateModalOpen(false)}
+                    initialData={editingProduct || undefined}
+                    onClose={() => {
+                        setIsCreateModalOpen(false);
+                        setEditingProduct(null);
+                    }}
                     onCreate={handleCreateProduct}
                 />
             )}
