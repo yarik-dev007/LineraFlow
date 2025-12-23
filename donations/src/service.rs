@@ -480,13 +480,14 @@ impl MutationRoot {
     }
 
     // Marketplace mutations
-    async fn create_product(&self, name: String, description: String, link: Option<String>, data_blob_hash: Option<String>, price: String) -> String {
+    async fn create_product(&self, name: String, description: String, link: Option<String>, data_blob_hash: Option<String>, image_preview_hash: Option<String>, price: String) -> String {
         let amount = price.parse::<Amount>().unwrap_or_default();
         self.runtime.schedule_operation(&Operation::CreateProduct {
             name,
             description,
-            link,
-            data_blob_hash,
+            link: link.unwrap_or_default(),
+            data_blob_hash: data_blob_hash.unwrap_or_default(),
+            image_preview_hash: image_preview_hash.unwrap_or_default(),
             price: amount,
         });
         "ok".to_string()

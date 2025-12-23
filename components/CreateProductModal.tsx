@@ -16,10 +16,13 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
     const [price, setPrice] = useState('');
     const [image, setImage] = useState('');
     const [file, setFile] = useState<File | null>(null);
+    const [previewFile, setPreviewFile] = useState<File | null>(null);
 
     const [uploadStatus, setUploadStatus] = useState<string>('');
     const [blobHash, setBlobHash] = useState<string>('');
+    const [previewBlobHash, setPreviewBlobHash] = useState<string>('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [activeUpload, setActiveUpload] = useState<'product' | 'preview' | null>(null);
 
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -35,10 +38,16 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'blob_published') {
-                    setBlobHash(data.hash);
-                    setUploadStatus('✅ File published to Linera!');
+                    if (activeUpload === 'product') {
+                        setBlobHash(data.hash);
+                    } else if (activeUpload === 'preview') {
+                        setPreviewBlobHash(data.hash);
+                    }
+                    setUploadStatus(`✅ ${activeUpload === 'product' ? 'Product' : 'Preview'} published to Linera!`);
+                    setActiveUpload(null);
                 } else if (data.type === 'blob_error') {
                     setUploadStatus(`❌ Error: ${data.message}`);
+                    setActiveUpload(null);
                 }
             } catch (e) {
                 console.error('WS Error:', e);
@@ -57,17 +66,23 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
         };
     }, []);
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, type: 'product' | 'preview') => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
-            setUploadStatus('Click "Publish File" to upload');
+            if (type === 'product') {
+                setFile(e.target.files[0]);
+            } else {
+                setPreviewFile(e.target.files[0]);
+            }
+            setUploadStatus(`Click "Publish" for ${type === 'product' ? 'product file' : 'preview image'}`);
         }
     };
 
-    const uploadFile = () => {
-        if (!file || !wsRef.current) return;
+    const uploadFile = (type: 'product' | 'preview') => {
+        const targetFile = type === 'product' ? file : previewFile;
+        if (!targetFile || !wsRef.current) return;
 
-        setUploadStatus('Uploading...');
+        setActiveUpload(type);
+        setUploadStatus(`Uploading ${type}...`);
 
         const reader = new FileReader();
         reader.onload = () => {
@@ -75,11 +90,11 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
 
             wsRef.current?.send(JSON.stringify({
                 type: 'publish_blob',
-                file: base64, // Send full data URI
-                fileType: file.type
+                file: base64,
+                fileType: targetFile.type
             }));
         };
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(targetFile);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -103,7 +118,8 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                         description: "${description}",
                         price: "${price}",
                         link: "${image || ''}",
-                        dataBlobHash: "${blobHash || ''}"
+                        dataBlobHash: "${blobHash || ''}",
+                        imagePreviewHash: "${previewBlobHash || ''}"
                     )
                 }
             `;
@@ -200,18 +216,31 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                         />
                     </div>
 
-                    {/* Image URL (Simpler for now) */}
-                    <div>
-                        <label className="block text-xs font-bold uppercase mb-1">Cover Image URL</label>
-                        <div className="flex gap-2">
+                    {/* Cover Image Upload */}
+                    <div className="border-2 border-dashed border-gray-300 p-4 bg-gray-50">
+                        <label className="block text-xs font-bold uppercase mb-2 flex items-center gap-2 text-linera-red">
+                            <ImageIcon className="w-4 h-4" /> Cover Image (Preview)
+                        </label>
+                        <div className="flex gap-2 items-center">
                             <input
-                                type="text"
-                                value={image}
-                                onChange={(e) => setImage(e.target.value)}
-                                className="flex-1 bg-gray-50 border-2 border-deep-black p-2 focus:outline-none focus:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow"
-                                placeholder="https://..."
+                                type="file"
+                                accept="image/*"
+                                onChange={(e) => handleFileChange(e, 'preview')}
+                                className="text-xs file:mr-4 file:py-2 file:px-4 file:border-2 file:border-deep-black file:text-xs file:font-semibold file:bg-white file:text-deep-black hover:file:bg-gray-100"
                             />
+                            {previewFile && !previewBlobHash && !activeUpload && (
+                                <button
+                                    type="button"
+                                    onClick={() => uploadFile('preview')}
+                                    className="bg-deep-black text-white px-3 py-1 text-xs font-bold uppercase hover:bg-linera-red transition-colors"
+                                >
+                                    Publish
+                                </button>
+                            )}
                         </div>
+                        {previewBlobHash && (
+                            <p className="text-[10px] mt-1 text-green-600 break-all">Preview Hash: {previewBlobHash}</p>
+                        )}
                     </div>
 
                     {/* File Upload Section */}
@@ -223,17 +252,17 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                         <div className="flex gap-2 items-center">
                             <input
                                 type="file"
-                                onChange={handleFileChange}
+                                onChange={(e) => handleFileChange(e, 'product')}
                                 className="text-xs file:mr-4 file:py-2 file:px-4 file:border-2 file:border-deep-black file:text-xs file:font-semibold file:bg-white file:text-deep-black hover:file:bg-gray-100"
                             />
 
-                            {file && !blobHash && (
+                            {file && !blobHash && !activeUpload && (
                                 <button
                                     type="button"
-                                    onClick={uploadFile}
+                                    onClick={() => uploadFile('product')}
                                     className="bg-deep-black text-white px-3 py-1 text-xs font-bold uppercase hover:bg-linera-red transition-colors"
                                 >
-                                    Publish File
+                                    Publish
                                 </button>
                             )}
                         </div>

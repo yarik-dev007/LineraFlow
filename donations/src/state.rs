@@ -86,7 +86,7 @@ impl DonationsState {
         Ok(())
     }
 
-    pub async fn update_product(&mut self, product_id: &str, author: AccountOwner, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, price: Option<Amount>) -> Result<(), String> {
+    pub async fn update_product(&mut self, product_id: &str, author: AccountOwner, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, image_preview_hash: Option<String>, price: Option<Amount>) -> Result<(), String> {
         let mut product = self.products.get(&product_id.to_string()).await.map_err(|e: ViewError| format!("{:?}", e))?.ok_or("Product not found")?;
         
         if product.author != author {

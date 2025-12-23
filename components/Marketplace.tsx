@@ -44,10 +44,11 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                     description: r.description,
                     price: r.price,
                     image: r.image, // URL
-                    author: r.owner, // PocketBase field
+                    author: r.owner,
                     authorAddress: r.owner,
                     fileHash: r.file_hash,
-                    fileName: r.file_name
+                    fileName: r.file_name,
+                    image_preview_hash: r.image_preview_hash
                 }));
 
                 setProducts(mappedProducts);

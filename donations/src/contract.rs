@@ -4,7 +4,7 @@ mod state;
 
 use linera_sdk::{
     abis::fungible::{Account as FungibleAccount, InitialState, Parameters},
-    linera_base_types::{Account, AccountOwner, Amount, WithContractAbi, StreamName, StreamUpdate},
+    linera_base_types::{Account, AccountOwner, WithContractAbi, StreamName, StreamUpdate},
     views::{RootView, View},
     Contract, ContractRuntime,
 };

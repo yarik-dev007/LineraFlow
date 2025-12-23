@@ -40,6 +40,7 @@ export interface Product {
   author: string;
   authorAddress?: string;
   image?: string;
+  image_preview_hash?: string;
 }
 
 export enum InteractionState {

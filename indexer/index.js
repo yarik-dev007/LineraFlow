@@ -167,6 +167,7 @@ async function syncProducts() {
             description
             price
             dataBlobHash
+            imagePreviewHash
             link
         }
     }`;
@@ -194,7 +195,9 @@ async function syncProducts() {
                     name: p.name,
                     description: p.description,
                     price: priceNum,
-                    file_name: p.name, // Fallback if file_name not in chain
+                    file_name: p.name,
+                    file_hash: p.dataBlobHash,
+                    image_preview_hash: p.imagePreviewHash,
                     created_at: new Date().toISOString()
                 };
 

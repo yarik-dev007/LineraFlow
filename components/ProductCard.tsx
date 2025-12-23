@@ -16,7 +16,17 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, onBuy, onEd
 
             {/* Image Placeholder */}
             <div className="h-48 bg-gray-100 border-b-2 border-deep-black flex items-center justify-center overflow-hidden relative">
-                {product.image ? (
+                {product.image_preview_hash ? (
+                    <img
+                        src={`http://localhost:8080/blobs/${product.image_preview_hash}`}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                            // If local blob fails, maybe it's not served directly or we're in a different env
+                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Preview+Not+Found';
+                        }}
+                    />
+                ) : product.image ? (
                     <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
                 ) : (
                     <div className="text-gray-300 font-display text-4xl select-none group-hover:scale-110 transition-transform">IMG</div>
