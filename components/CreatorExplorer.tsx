@@ -99,7 +99,11 @@ const CreatorExplorer: React.FC<CreatorExplorerProps> = ({ creators, onSelectCre
                     <span className="text-[10px] uppercase font-bold text-gray-400">Total Raised</span>
                     <span className="font-mono font-bold text-lg">{creator.raised} LIN</span>
                   </div>
-                  <span className="text-deep-black font-bold text-sm flex items-center gap-2 group-hover:gap-3 transition-all">
+                  <div className="flex flex-col text-right">
+                    <span className="text-[10px] uppercase font-bold text-gray-400">Products</span>
+                    <span className="font-mono font-bold text-lg">{creator.productsCount || 0}</span>
+                  </div>
+                  <span className="text-deep-black font-bold text-sm flex items-center gap-2 group-hover:gap-3 transition-all ml-4">
                     VIEW <span>{'->'}</span>
                   </span>
                 </div>

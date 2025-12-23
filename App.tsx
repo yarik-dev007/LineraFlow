@@ -67,7 +67,7 @@ const AppContent: React.FC = () => {
     isConnected: status === 'Ready'
   };
 
-  // 1. Fetch Global Data (Profiles & Donations)
+  // 1. Fetch Global Data (Profiles, Donations & Products)
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -75,6 +75,7 @@ const AppContent: React.FC = () => {
         const donations = await pb.collection('donations').getFullList({
           sort: '-timestamp'
         });
+        const productsList = await pb.collection('products').getFullList();
 
         setAllDonations(donations);
 
@@ -82,6 +83,9 @@ const AppContent: React.FC = () => {
           const creatorDonations = donations.filter((d: any) => d.to_owner === record.owner);
           const raised = creatorDonations.reduce((sum: number, d: any) => sum + d.amount, 0);
           const recentDonations = creatorDonations.slice(0, 3);
+
+          // Count products for this creator
+          const productCount = productsList.filter((p: any) => p.owner === record.owner).length;
 
           return {
             id: record.id,
@@ -94,7 +98,8 @@ const AppContent: React.FC = () => {
             contractAddress: record.owner,
             chainId: record.chain_id,
             socials: record.socials || [],
-            donations: recentDonations
+            donations: recentDonations,
+            productsCount: productCount
           };
         });
 
@@ -108,13 +113,19 @@ const AppContent: React.FC = () => {
 
     // Subscribe to realtime updates
     pb.collection('donations').subscribe('*', async (e) => {
-      if (e.action === 'create' || e.action === 'update') {
+      if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
         await fetchData();
       }
     });
 
     pb.collection('profiles').subscribe('*', async (e) => {
-      if (e.action === 'create' || e.action === 'update') {
+      if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
+        await fetchData();
+      }
+    });
+
+    pb.collection('products').subscribe('*', async (e) => {
+      if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
         await fetchData();
       }
     });
@@ -122,6 +133,7 @@ const AppContent: React.FC = () => {
     return () => {
       pb.collection('donations').unsubscribe('*');
       pb.collection('profiles').unsubscribe('*');
+      pb.collection('products').unsubscribe('*');
     };
   }, [accountOwner]);
 

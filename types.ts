@@ -29,6 +29,7 @@ export interface Creator {
   chainId?: string;
   socials?: any[];
   donations?: any[];
+  productsCount?: number;
 }
 
 export interface Product {

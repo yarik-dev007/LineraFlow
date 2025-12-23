@@ -35,7 +35,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 // But let's fetch all active products for now to allow local filtering text search
 
                 const records = await pb.collection('products').getFullList({
-                    sort: '-created',
+                    sort: '-created_at',
                 });
 
                 const mappedProducts: Product[] = records.map((r: any) => ({

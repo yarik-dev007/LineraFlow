@@ -315,6 +315,7 @@ impl QueryRoot {
                                     description: p.description,
                                     link: p.link,
                                     data_blob_hash: p.data_blob_hash,
+                                    image_preview_hash: p.image_preview_hash,
                                     price: p.price,
                                     created_at: p.created_at,
                                 });
@@ -342,6 +343,7 @@ impl QueryRoot {
                             description: p.description,
                             link: p.link,
                             data_blob_hash: p.data_blob_hash,
+                            image_preview_hash: p.image_preview_hash,
                             price: p.price,
                             created_at: p.created_at,
                         }).collect()
@@ -365,6 +367,7 @@ impl QueryRoot {
                         description: p.description,
                         link: p.link,
                         data_blob_hash: p.data_blob_hash,
+                        image_preview_hash: p.image_preview_hash,
                         price: p.price,
                         created_at: p.created_at,
                     }),
@@ -401,6 +404,7 @@ impl QueryRoot {
                                     description: pur.product.description,
                                     link: pur.product.link,
                                     data_blob_hash: pur.product.data_blob_hash,
+                                    image_preview_hash: pur.product.image_preview_hash,
                                     price: pur.product.price,
                                     created_at: pur.product.created_at,
                                 },
@@ -441,6 +445,7 @@ impl QueryRoot {
                                     description: pur.product.description,
                                     link: pur.product.link,
                                     data_blob_hash: pur.product.data_blob_hash,
+                                    image_preview_hash: pur.product.image_preview_hash,
                                     price: pur.product.price,
                                     created_at: pur.product.created_at,
                                 },
@@ -475,7 +480,7 @@ impl MutationRoot {
     }
 
     // Marketplace mutations
-    async fn create_product(&self, name: String, description: String, link: String, data_blob_hash: String, price: String) -> String {
+    async fn create_product(&self, name: String, description: String, link: Option<String>, data_blob_hash: Option<String>, price: String) -> String {
         let amount = price.parse::<Amount>().unwrap_or_default();
         self.runtime.schedule_operation(&Operation::CreateProduct {
             name,
@@ -487,7 +492,7 @@ impl MutationRoot {
         "ok".to_string()
     }
 
-    async fn update_product(&self, product_id: String, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, price: Option<String>) -> String {
+    async fn update_product(&self, product_id: String, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, image_preview_hash: Option<String>, price: Option<String>) -> String {
         let price_amount = price.and_then(|p| p.parse::<Amount>().ok());
         self.runtime.schedule_operation(&Operation::UpdateProduct {
             product_id,
@@ -495,6 +500,7 @@ impl MutationRoot {
             description,
             link,
             data_blob_hash,
+            image_preview_hash,
             price: price_amount,
         });
         "ok".to_string()

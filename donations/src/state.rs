@@ -97,6 +97,7 @@ impl DonationsState {
         if let Some(d) = description { product.description = d; }
         if let Some(l) = link { product.link = l; }
         if let Some(h) = data_blob_hash { product.data_blob_hash = h; }
+        if let Some(ph) = image_preview_hash { product.image_preview_hash = ph; }
         if let Some(p) = price { product.price = p; }
         
         self.products.insert(&product_id.to_string(), product).map_err(|e: ViewError| format!("{:?}", e))?;

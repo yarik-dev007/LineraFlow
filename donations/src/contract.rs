@@ -132,7 +132,7 @@ impl Contract for DonationsContract {
             Operation::GetDonationsByDonor { owner } => {
                 match self.state.list_donations_by_donor(owner).await { Ok(v) => ResponseData::Donations(v), Err(_) => ResponseData::Donations(Vec::new()) }
             }
-            Operation::CreateProduct { name, description, link, data_blob_hash, price } => {
+            Operation::CreateProduct { name, description, link, data_blob_hash, image_preview_hash, price } => {
                 let owner = self.runtime.authenticated_signer().expect("Authentication required");
                 let ts = self.runtime.system_time().micros();
                 let chain_id = self.runtime.chain_id();
@@ -146,6 +146,7 @@ impl Contract for DonationsContract {
                     description: description.clone(),
                     link: link.clone(),
                     data_blob_hash: data_blob_hash.clone(),
+                    image_preview_hash: image_preview_hash.clone(),
                     price,
                     created_at: ts,
                 };
@@ -166,9 +167,9 @@ impl Contract for DonationsContract {
                 
                 ResponseData::Ok
             }
-            Operation::UpdateProduct { product_id, name, description, link, data_blob_hash, price } => {
+            Operation::UpdateProduct { product_id, name, description, link, data_blob_hash, image_preview_hash, price } => {
                 let owner = self.runtime.authenticated_signer().expect("Authentication required");
-                self.state.update_product(&product_id, owner, name, description, link, data_blob_hash, price).await.expect("Failed to update product");
+                self.state.update_product(&product_id, owner, name, description, link, data_blob_hash, image_preview_hash, price).await.expect("Failed to update product");
                 
                 let product = self.state.get_product(&product_id).await.expect("Failed to get product").expect("Product not found");
                 let ts = self.runtime.system_time().micros();

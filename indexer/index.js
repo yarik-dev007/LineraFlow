@@ -6,10 +6,10 @@ import fs from 'fs';
 import path from 'path';
 
 // Configuration
-const LINERA_CHAIN_ID = '8034b1b376dd64d049deec9bb3a74378502e9b2a6b1b370c5d1a510534e93b66';
-const LINERA_APP_ID = 'a2376c5a0cc2e471078462f22eacca74d1ca8849dd09dbc47cb0e5da5e06fb89';
-const LINERA_NODE_URL = `http://localhost:8081`;
-const LINERA_WS_URL = `ws://localhost:8081/ws`;
+const LINERA_CHAIN_ID = 'fcc99b4e4c6be2f33864d71de61acb33c0f692c397a32b6d64578cf0c82f7faa';
+const LINERA_APP_ID = 'f9ad1a758405a3061f3c53f1918e5490c7428976c252fe98cbc58e459a86eeac';
+const LINERA_NODE_URL = `http://localhost:7071`;
+const LINERA_WS_URL = `ws://localhost:7071/ws`;
 const POCKETBASE_URL = 'http://127.0.0.1:8090';
 const CACHE_FILE = path.join(process.cwd(), '.indexer-cache.json');
 
@@ -180,7 +180,7 @@ async function syncProducts() {
             try {
                 // Find by on-chain product_id (unique)
                 const existingList = await pb.collection('products').getList(1, 1, {
-                    filter: `product_id_linera="${p.id}"`
+                    filter: `product_id="${p.id}"`
                 });
 
                 const priceNum = parseFloat(p.price || '0');
@@ -188,13 +188,14 @@ async function syncProducts() {
                 // Map Data - Removed image/file_hash from schema as requested
                 // Storing metadata only
                 const data = {
-                    product_id_linera: p.id,
+                    product_id: p.id,
                     owner: p.author,
                     chain_id: p.authorChainId,
                     name: p.name,
                     description: p.description,
                     price: priceNum,
-                    file_name: p.name // Fallback if file_name not in chain
+                    file_name: p.name, // Fallback if file_name not in chain
+                    created_at: new Date().toISOString()
                 };
 
                 if (existingList.items.length > 0) {
@@ -206,6 +207,9 @@ async function syncProducts() {
                 }
             } catch (e) {
                 console.error(`❌ Error syncing product ${p.id}:`, e.message);
+                if (e.response) {
+                    console.error('   Response Info:', JSON.stringify(e.response, null, 2));
+                }
             }
         }
 
@@ -214,7 +218,7 @@ async function syncProducts() {
         const chainIds = new Set(products.map(p => p.id));
 
         for (const localProd of allPbProducts) {
-            if (!chainIds.has(localProd.product_id_linera)) {
+            if (!chainIds.has(localProd.product_id)) {
                 console.log(`🗑️ Deleting removed product: ${localProd.name}`);
                 await pb.collection('products').delete(localProd.id);
             }

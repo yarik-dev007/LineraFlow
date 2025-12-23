@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, Image as ImageIcon } from 'lucide-react';
-import { pb } from './pocketbase';
 import { useLinera } from './LineraProvider';
 
 interface CreateProductModalProps {
@@ -10,7 +9,7 @@ interface CreateProductModalProps {
 }
 
 const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCreate, isLoading }) => {
-    const { accountOwner } = useLinera();
+    const { accountOwner, application } = useLinera();
 
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
@@ -87,28 +86,43 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
         e.preventDefault();
         if (!name || !description || !price) return;
 
-        if (!accountOwner) {
-            setUploadStatus('❌ Error: Wallet not connected');
+        if (!accountOwner || !application) {
+            setUploadStatus('❌ Error: Wallet or Application not ready');
             return;
         }
 
         setIsSubmitting(true);
+        setUploadStatus('⏳ Sending transaction to Linera...');
 
         try {
-            // 1. Create Record in PocketBase
-            const record = await pb.collection('products').create({
-                name: name,
-                description: description,
-                price: parseFloat(price),
-                image: image,
-                owner: accountOwner,
-                file_hash: blobHash || '',
-                file_name: file?.name || ''
-            });
+            // 1. Execute Blockchain Mutation
+            const mutation = `
+                mutation {
+                    createProduct(
+                        name: "${name}",
+                        description: "${description}",
+                        price: "${price}",
+                        link: "${image || ''}",
+                        dataBlobHash: "${blobHash || ''}"
+                    )
+                }
+            `;
 
-            console.log('Product created in PB:', record.id);
+            console.log('Sending mutation:', mutation);
 
-            // 2. Call Parent
+            const result: any = await application.query(JSON.stringify({ query: mutation }));
+            console.log('Mutation completed:', result);
+
+            let parsedResult = result;
+            if (typeof result === 'string') {
+                parsedResult = JSON.parse(result);
+            }
+
+            if (parsedResult?.errors) {
+                throw new Error(parsedResult.errors[0]?.message || 'Blockchain error');
+            }
+
+            // 2. Notify Parent
             onCreate({
                 name,
                 description,
@@ -118,9 +132,16 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                 fileName: file?.name
             });
 
+            setUploadStatus('✅ Transaction sent! Item will appear shortly.');
+
+            // Close after a short delay to let user see success
+            setTimeout(() => {
+                onClose();
+            }, 1500);
+
         } catch (e: any) {
-            console.error('Error creating product:', e);
-            setUploadStatus(`❌ Error saving product: ${e.message}`);
+            console.error('Error creating product on chain:', e);
+            setUploadStatus(`❌ Error: ${e.message || 'Transaction failed'}`);
         } finally {
             setIsSubmitting(false);
         }

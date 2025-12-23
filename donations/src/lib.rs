@@ -125,6 +125,7 @@ pub struct Product {
     pub description: String,
     pub link: String,
     pub data_blob_hash: String,
+    pub image_preview_hash: String,
     pub price: Amount,
     pub created_at: u64,
 }
@@ -135,6 +136,7 @@ pub struct ProductInput {
     pub description: String,
     pub link: String,
     pub data_blob_hash: String,
+    pub image_preview_hash: String,
     pub price: String,
 }
 
@@ -147,6 +149,7 @@ pub struct ProductView {
     pub description: String,
     pub link: String,
     pub data_blob_hash: String,
+    pub image_preview_hash: String,
     pub price: Amount,
     pub created_at: u64,
 }
@@ -219,6 +222,7 @@ pub enum Operation {
         description: String,
         link: String,
         data_blob_hash: String,
+        image_preview_hash: String,
         price: Amount,
     },
     UpdateProduct {
@@ -227,6 +231,7 @@ pub enum Operation {
         description: Option<String>,
         link: Option<String>,
         data_blob_hash: Option<String>,
+        image_preview_hash: Option<String>,
         price: Option<Amount>,
     },
     DeleteProduct {

@@ -525,11 +525,11 @@
   },
   {
     "id": "pbc_products_01",
-    "listRule": "",
-    "viewRule": "",
-    "createRule": "",
-    "updateRule": "",
-    "deleteRule": "",
+    "listRule": "id != ''",
+    "viewRule": "id != ''",
+    "createRule": "id != ''",
+    "updateRule": "id != ''",
+    "deleteRule": "id != ''",
     "name": "products",
     "type": "base",
     "fields": [
