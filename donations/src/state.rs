@@ -1,6 +1,6 @@
 use linera_sdk::views::{linera_views, MapView, RegisterView, RootView, ViewStorageContext, ViewError};
 use linera_sdk::linera_base_types::{AccountOwner, Amount};
-use donations::{DonationRecord, Profile, SocialLink, Product, Purchase};
+use donations::{DonationRecord, Profile, SocialLink, Product, Purchase, CustomFields, OrderFormField};
 
 #[derive(RootView)]
 #[view(context = ViewStorageContext)]
@@ -16,6 +16,7 @@ pub struct DonationsState {
     pub products_by_author: MapView<AccountOwner, Vec<String>>,
     pub purchases: MapView<String, Purchase>,
     pub purchases_by_buyer: MapView<AccountOwner, Vec<String>>,
+    pub purchases_by_seller: MapView<AccountOwner, Vec<String>>,
 }
 
 #[allow(dead_code)]
@@ -72,10 +73,30 @@ impl DonationsState {
         Ok(res)
     }
 
-    // Marketplace methods
+    // Validation methods for flexible products
+    pub fn validate_custom_fields(fields: &CustomFields) -> Result<(), String> {
+        if fields.len() > 20 {
+            return Err("Maximum 20 custom fields allowed".to_string());
+        }
+        Ok(())
+    }
+
+    pub fn validate_order_form(form: &Vec<OrderFormField>) -> Result<(), String> {
+        if form.len() > 20 {
+            return Err("Maximum 20 order form fields allowed".to_string());
+        }
+        Ok(())
+    }
+
+    // Marketplace methods - updated for flexible structure
     pub async fn create_product(&mut self, product: Product) -> Result<(), String> {
         let product_id = product.id.clone();
         let author = product.author.clone();
+        
+        // Validate before creating
+        Self::validate_custom_fields(&product.public_data)?;
+        Self::validate_custom_fields(&product.private_data)?;
+        Self::validate_order_form(&product.order_form)?;
         
         self.products.insert(&product_id, product).map_err(|e: ViewError| format!("{:?}", e))?;
         
@@ -86,19 +107,28 @@ impl DonationsState {
         Ok(())
     }
 
-    pub async fn update_product(&mut self, product_id: &str, author: AccountOwner, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, image_preview_hash: Option<String>, price: Option<Amount>) -> Result<(), String> {
+    // Updated to handle flexible product updates
+    pub async fn update_product(&mut self, product_id: &str, author: AccountOwner, public_data: Option<CustomFields>, price: Option<Amount>, private_data: Option<CustomFields>, success_message: Option<String>, order_form: Option<Vec<OrderFormField>>) -> Result<(), String> {
         let mut product = self.products.get(&product_id.to_string()).await.map_err(|e: ViewError| format!("{:?}", e))?.ok_or("Product not found")?;
         
         if product.author != author {
             return Err("Unauthorized: not product owner".to_string());
         }
         
-        if let Some(n) = name { product.name = n; }
-        if let Some(d) = description { product.description = d; }
-        if let Some(l) = link { product.link = l; }
-        if let Some(h) = data_blob_hash { product.data_blob_hash = h; }
-        if let Some(ph) = image_preview_hash { product.image_preview_hash = ph; }
-        if let Some(p) = price { product.price = p; }
+        if let Some(pd) = public_data { 
+            Self::validate_custom_fields(&pd)?;
+            product.public_data = pd; 
+        }
+        if let Some(pr) = price { product.price = pr; }
+        if let Some(pvd) = private_data { 
+            Self::validate_custom_fields(&pvd)?;
+            product.private_data = pvd; 
+        }
+        if let Some(sm) = success_message { product.success_message = Some(sm); }
+        if let Some(of) = order_form { 
+            Self::validate_order_form(&of)?;
+            product.order_form = of; 
+        }
         
         self.products.insert(&product_id.to_string(), product).map_err(|e: ViewError| format!("{:?}", e))?;
         Ok(())
@@ -138,18 +168,36 @@ impl DonationsState {
     pub async fn record_purchase(&mut self, purchase: Purchase) -> Result<(), String> {
         let purchase_id = purchase.id.clone();
         let buyer = purchase.buyer.clone();
+        let seller = purchase.seller.clone();
         
         self.purchases.insert(&purchase_id, purchase).map_err(|e: ViewError| format!("{:?}", e))?;
         
+        // Index by buyer
         let mut buyer_purchases = self.purchases_by_buyer.get(&buyer).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
-        buyer_purchases.push(purchase_id);
+        buyer_purchases.push(purchase_id.clone());
         self.purchases_by_buyer.insert(&buyer, buyer_purchases).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Index by seller
+        let mut seller_purchases = self.purchases_by_seller.get(&seller).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        seller_purchases.push(purchase_id);
+        self.purchases_by_seller.insert(&seller, seller_purchases).map_err(|e: ViewError| format!("{:?}", e))?;
         
         Ok(())
     }
 
     pub async fn list_purchases_by_buyer(&self, buyer: AccountOwner) -> Result<Vec<Purchase>, String> {
         let ids = self.purchases_by_buyer.get(&buyer).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        let mut res = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(p) = self.purchases.get(&id).await.map_err(|e: ViewError| format!("{:?}", e))? {
+                res.push(p);
+            }
+        }
+        Ok(res)
+    }
+
+    pub async fn list_purchases_by_seller(&self, seller: AccountOwner) -> Result<Vec<Purchase>, String> {
+        let ids = self.purchases_by_seller.get(&seller).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
         let mut res = Vec::with_capacity(ids.len());
         for id in ids {
             if let Some(p) = self.purchases.get(&id).await.map_err(|e: ViewError| format!("{:?}", e))? {

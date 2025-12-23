@@ -909,6 +909,34 @@
         "required": false,
         "system": false,
         "type": "date"
+      },
+      {
+        "hidden": false,
+        "id": "text_type",
+        "name": "type",
+        "type": "text",
+        "required": false,
+        "presentable": false,
+        "unique": false,
+        "options": {
+          "min": 0,
+          "max": 0,
+          "pattern": ""
+        }
+      },
+      {
+        "hidden": false,
+        "id": "text_category",
+        "name": "category",
+        "type": "text",
+        "required": false,
+        "presentable": false,
+        "unique": false,
+        "options": {
+          "min": 0,
+          "max": 0,
+          "pattern": ""
+        }
       }
     ],
     "indexes": [

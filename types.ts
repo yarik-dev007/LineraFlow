@@ -32,31 +32,54 @@ export interface Creator {
   productsCount?: number;
 }
 
+export interface KeyValuePair {
+  key: string;
+  value: string;
+}
+
+export interface OrderFormField {
+  key: string;
+  label: string;
+  fieldType: string; // Updated from field_type
+  field_type?: string; // Legacy support
+  required: boolean;
+}
+
 export interface Product {
   id: string;
-  pbId?: string;
-  collectionId?: string;
+  author: string;
+  authorChainId: string;
+  publicData: KeyValuePair[]; // Source of truth
+  price: string;
+  privateData?: KeyValuePair[];
+  orderForm?: OrderFormField[];
+  successMessage?: string; // Added from new spec
+  createdAt: number;
+
+  // Convenience fields populated from publicData for UI
   name: string;
   description: string;
-  price: number;
-  author: string;
-  authorAddress?: string;
-  authorChainId?: string;
   image?: string;
-  image_preview?: string;
+  pbId?: string; // Legacy support for PocketBase
+  collectionId?: string; // Legacy support for PocketBase
+  image_preview?: string; // Legacy support
+
+  // Mapped fields
+  authorAddress?: string;
   image_preview_hash?: string;
   data_blob_hash?: string;
 }
 
 export interface Purchase {
   id: string;
-  product_id: string;
+  productId: string;
   buyer: string;
-  buyer_chain_id: string;
+  buyerChainId: string;
   seller: string;
-  seller_chain_id: string;
+  sellerChainId: string;
   amount: string;
-  timestamp: string;
+  timestamp: number;
+  orderData: KeyValuePair[];
   product: Product;
 }
 

@@ -5,8 +5,110 @@ mod state;
 use std::sync::Arc;
 use async_graphql::{EmptySubscription, Object, Request, Response, Schema};
 use linera_sdk::{linera_base_types::{AccountOwner, WithServiceAbi, Amount}, views::View, Service, ServiceRuntime};
-use donations::{DonationsAbi, Operation, AccountInput, Profile as LibProfile, DonationRecord as LibDonationRecord, ProfileView, DonationView, SocialLinkInput, TotalAmountView};
+use donations::{
+    DonationsAbi, Operation, AccountInput, Profile as LibProfile, DonationRecord as LibDonationRecord,
+    ProfileView, DonationView, SocialLinkInput, TotalAmountView, CustomFields, OrderFormField,
+    OrderFormFieldInput, OrderResponses, Product,
+};
 use state::DonationsState;
+use async_graphql::{SimpleObject, InputObject};
+
+// NEW: Product public view (visible to all, excludes private data)
+#[derive(SimpleObject)]
+struct ProductPublicView {
+    id: String,
+    author: AccountOwner,
+    author_chain_id: String,
+    public_data: Vec<KeyValuePair>,
+    price: Amount,
+    order_form: Vec<OrderFormFieldView>,
+    created_at: u64,
+}
+
+// NEW: Product full view (includes private data, for purchased products)
+#[derive(SimpleObject)]
+struct ProductFullView {
+    id: String,
+    author: AccountOwner,
+    author_chain_id: String,
+    public_data: Vec<KeyValuePair>,
+    price: Amount,
+    private_data: Vec<KeyValuePair>,
+    success_message: Option<String>,
+    order_form: Vec<OrderFormFieldView>,
+    created_at: u64,
+}
+
+// Helper type for BTreeMap -> GraphQL
+#[derive(SimpleObject, Clone)]
+struct KeyValuePair {
+    key: String,
+    value: String,
+}
+
+// Order form field view
+#[derive(SimpleObject, Clone)]
+struct OrderFormFieldView {
+    key: String,
+    label: String,
+    field_type: String,
+    required: bool,
+}
+
+// NEW: Purchase with full product data
+#[derive(SimpleObject)]
+struct PurchaseFullView {
+    id: String,
+    product_id: String,
+    buyer: AccountOwner,
+    buyer_chain_id: String,
+    seller: AccountOwner,
+    seller_chain_id: String,
+    amount: Amount,
+    timestamp: u64,
+    order_data: Vec<KeyValuePair>,
+    product: ProductFullView,
+}
+
+// Helper functions
+fn btree_to_pairs(map: &CustomFields) -> Vec<KeyValuePair> {
+    map.iter().map(|(k, v)| KeyValuePair { key: k.clone(), value: v.clone() }).collect()
+}
+
+fn order_form_to_views(form: &[OrderFormField]) -> Vec<OrderFormFieldView> {
+    form.iter().map(|f| OrderFormFieldView {
+        key: f.key.clone(),
+        label: f.label.clone(),
+        field_type: f.field_type.clone(),
+        required: f.required,
+    }).collect()
+}
+
+fn product_to_public_view(p: &Product) -> ProductPublicView {
+    ProductPublicView {
+        id: p.id.clone(),
+        author: p.author,
+        author_chain_id: p.author_chain_id.clone(),
+        public_data: btree_to_pairs(&p.public_data),
+        price: p.price,
+        order_form: order_form_to_views(&p.order_form),
+        created_at: p.created_at,
+    }
+}
+
+fn product_to_full_view(p: &Product) -> ProductFullView {
+    ProductFullView {
+        id: p.id.clone(),
+        author: p.author,
+        author_chain_id: p.author_chain_id.clone(),
+        public_data: btree_to_pairs(&p.public_data),
+        price: p.price,
+        private_data: btree_to_pairs(&p.private_data),
+        success_message: p.success_message.clone(),
+        order_form: order_form_to_views(&p.order_form),
+        created_at: p.created_at,
+    }
+}
 
 linera_sdk::service!(DonationsService);
 
@@ -298,8 +400,10 @@ impl QueryRoot {
         }
     }
 
-    // Marketplace queries
-    async fn all_products(&self) -> Vec<donations::ProductView> {
+    // Marketplace queries - NEW: Using flexible product structure
+    
+    /// Get all products (public view only, no private data)
+    async fn all_products(&self) -> Vec<ProductPublicView> {
         match DonationsState::load(self.storage_context.clone()).await {
             Ok(state) => {
                 match state.products.indices().await {
@@ -307,18 +411,7 @@ impl QueryRoot {
                         let mut res = Vec::new();
                         for id in ids {
                             if let Ok(Some(p)) = state.products.get(&id).await {
-                                res.push(donations::ProductView {
-                                    id: p.id,
-                                    author: p.author,
-                                    author_chain_id: p.author_chain_id,
-                                    name: p.name,
-                                    description: p.description,
-                                    link: p.link,
-                                    data_blob_hash: p.data_blob_hash,
-                                    image_preview_hash: p.image_preview_hash,
-                                    price: p.price,
-                                    created_at: p.created_at,
-                                });
+                                res.push(product_to_public_view(&p));
                             }
                         }
                         res
@@ -330,22 +423,64 @@ impl QueryRoot {
         }
     }
 
-    async fn products_by_author(&self, owner: AccountOwner) -> Vec<donations::ProductView> {
+    /// Get products by author (public view only)
+    async fn products_by_author(&self, owner: AccountOwner) -> Vec<ProductPublicView> {
         match DonationsState::load(self.storage_context.clone()).await {
             Ok(state) => {
                 match state.list_products_by_author(owner).await {
-                    Ok(products) => {
-                        products.into_iter().map(|p| donations::ProductView {
-                            id: p.id,
-                            author: p.author,
-                            author_chain_id: p.author_chain_id,
-                            name: p.name,
-                            description: p.description,
-                            link: p.link,
-                            data_blob_hash: p.data_blob_hash,
-                            image_preview_hash: p.image_preview_hash,
-                            price: p.price,
-                            created_at: p.created_at,
+                    Ok(products) => products.iter().map(|p| product_to_public_view(p)).collect(),
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Get single product by ID (public view only)
+    async fn product(&self, id: String) -> Option<ProductPublicView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.get_product(&id).await {
+                    Ok(Some(p)) => Some(product_to_public_view(&p)),
+                    _ => None,
+                }
+            },
+            Err(_) => None,
+        }
+    }
+
+    /// Get single product with full data (for author or buyer)
+    async fn product_full(&self, id: String) -> Option<ProductFullView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.get_product(&id).await {
+                    Ok(Some(p)) => Some(product_to_full_view(&p)),
+                    _ => None,
+                }
+            },
+            Err(_) => None,
+        }
+    }
+
+    /// Get purchases for buyer with full product data
+    async fn purchases(&self, owner: AccountOwner) -> Vec<PurchaseFullView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.list_purchases_by_buyer(owner).await {
+                    Ok(purchases) => {
+                        purchases.into_iter().map(|pur| {
+                            PurchaseFullView {
+                                id: pur.id,
+                                product_id: pur.product_id,
+                                buyer: pur.buyer,
+                                buyer_chain_id: pur.buyer_chain_id,
+                                seller: pur.seller,
+                                seller_chain_id: pur.seller_chain_id,
+                                amount: pur.amount,
+                                timestamp: pur.timestamp,
+                                order_data: btree_to_pairs(&pur.order_data),
+                                product: product_to_full_view(&pur.product),
+                            }
                         }).collect()
                     },
                     Err(_) => Vec::new(),
@@ -355,62 +490,26 @@ impl QueryRoot {
         }
     }
 
-    async fn product(&self, id: String) -> Option<donations::ProductView> {
-        match DonationsState::load(self.storage_context.clone()).await {
-            Ok(state) => {
-                match state.get_product(&id).await {
-                    Ok(Some(p)) => Some(donations::ProductView {
-                        id: p.id,
-                        author: p.author,
-                        author_chain_id: p.author_chain_id,
-                        name: p.name,
-                        description: p.description,
-                        link: p.link,
-                        data_blob_hash: p.data_blob_hash,
-                        image_preview_hash: p.image_preview_hash,
-                        price: p.price,
-                        created_at: p.created_at,
-                    }),
-                    _ => None,
-                }
-            },
-            Err(_) => None,
-        }
-    }
-
-    async fn purchases(&self, owner: AccountOwner) -> Vec<donations::PurchaseView> {
+    /// Get purchases for buyer (alias for purchases)
+    async fn my_purchases(&self, owner: AccountOwner) -> Vec<PurchaseFullView> {
         match DonationsState::load(self.storage_context.clone()).await {
             Ok(state) => {
                 match state.list_purchases_by_buyer(owner).await {
                     Ok(purchases) => {
-                        let mut res = Vec::new();
-                        for pur in purchases {
-                            let buyer_chain_id = state.subscriptions.get(&pur.buyer).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
-                            let seller_chain_id = state.subscriptions.get(&pur.seller).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
-                            res.push(donations::PurchaseView {
+                        purchases.into_iter().map(|pur| {
+                            PurchaseFullView {
                                 id: pur.id,
                                 product_id: pur.product_id,
                                 buyer: pur.buyer,
-                                buyer_chain_id,
+                                buyer_chain_id: pur.buyer_chain_id,
                                 seller: pur.seller,
-                                seller_chain_id,
+                                seller_chain_id: pur.seller_chain_id,
                                 amount: pur.amount,
                                 timestamp: pur.timestamp,
-                                product: donations::ProductView {
-                                    id: pur.product.id,
-                                    author: pur.product.author,
-                                    author_chain_id: pur.product.author_chain_id,
-                                    name: pur.product.name,
-                                    description: pur.product.description,
-                                    link: pur.product.link,
-                                    data_blob_hash: pur.product.data_blob_hash,
-                                    image_preview_hash: pur.product.image_preview_hash,
-                                    price: pur.product.price,
-                                    created_at: pur.product.created_at,
-                                },
-                            });
-                        }
-                        res
+                                order_data: btree_to_pairs(&pur.order_data),
+                                product: product_to_full_view(&pur.product),
+                            }
+                        }).collect()
                     },
                     Err(_) => Vec::new(),
                 }
@@ -419,37 +518,56 @@ impl QueryRoot {
         }
     }
 
-    async fn my_purchases(&self, owner: AccountOwner) -> Vec<donations::PurchaseView> {
+    /// Get all orders received by seller (for "My Orders" tab)
+    async fn my_orders(&self, owner: AccountOwner) -> Vec<PurchaseFullView> {
         match DonationsState::load(self.storage_context.clone()).await {
             Ok(state) => {
-                match state.list_purchases_by_buyer(owner).await {
+                match state.list_purchases_by_seller(owner).await {
                     Ok(purchases) => {
-                        let mut res = Vec::new();
-                        for pur in purchases {
-                            let buyer_chain_id = state.subscriptions.get(&pur.buyer).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
-                            let seller_chain_id = state.subscriptions.get(&pur.seller).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
-                            res.push(donations::PurchaseView {
+                        purchases.into_iter().map(|pur| {
+                            PurchaseFullView {
                                 id: pur.id,
                                 product_id: pur.product_id,
                                 buyer: pur.buyer,
-                                buyer_chain_id,
+                                buyer_chain_id: pur.buyer_chain_id,
                                 seller: pur.seller,
-                                seller_chain_id,
+                                seller_chain_id: pur.seller_chain_id,
                                 amount: pur.amount,
                                 timestamp: pur.timestamp,
-                                product: donations::ProductView {
-                                    id: pur.product.id,
-                                    author: pur.product.author,
-                                    author_chain_id: pur.product.author_chain_id,
-                                    name: pur.product.name,
-                                    description: pur.product.description,
-                                    link: pur.product.link,
-                                    data_blob_hash: pur.product.data_blob_hash,
-                                    image_preview_hash: pur.product.image_preview_hash,
-                                    price: pur.product.price,
-                                    created_at: pur.product.created_at,
-                                },
-                            });
+                                order_data: btree_to_pairs(&pur.order_data),
+                                product: product_to_full_view(&pur.product),
+                            }
+                        }).collect()
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Get all purchases in the system (for debugging)
+    async fn all_purchases(&self) -> Vec<PurchaseFullView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.purchases.indices().await {
+                    Ok(ids) => {
+                        let mut res = Vec::new();
+                        for id in ids {
+                            if let Ok(Some(pur)) = state.purchases.get(&id).await {
+                                res.push(PurchaseFullView {
+                                    id: pur.id,
+                                    product_id: pur.product_id,
+                                    buyer: pur.buyer,
+                                    buyer_chain_id: pur.buyer_chain_id,
+                                    seller: pur.seller,
+                                    seller_chain_id: pur.seller_chain_id,
+                                    amount: pur.amount,
+                                    timestamp: pur.timestamp,
+                                    order_data: btree_to_pairs(&pur.order_data),
+                                    product: product_to_full_view(&pur.product),
+                                });
+                            }
                         }
                         res
                     },
@@ -494,30 +612,66 @@ impl MutationRoot {
         "ok".to_string()
     }
 
-    // Marketplace mutations
-    async fn create_product(&self, name: String, description: String, link: Option<String>, data_blob_hash: Option<String>, image_preview_hash: Option<String>, price: String) -> String {
+    // Marketplace mutations - NEW: Flexible product structure
+    
+    /// Create a new product with custom fields
+    async fn create_product(
+        &self,
+        public_data: Vec<KeyValueInput>,
+        price: String,
+        private_data: Vec<KeyValueInput>,
+        success_message: Option<String>,
+        order_form: Vec<OrderFormFieldInputGql>,
+    ) -> String {
         let amount = price.parse::<Amount>().unwrap_or_default();
+        
+        // Convert input vectors to BTreeMaps
+        let public_data_map: CustomFields = public_data.into_iter().map(|kv| (kv.key, kv.value)).collect();
+        let private_data_map: CustomFields = private_data.into_iter().map(|kv| (kv.key, kv.value)).collect();
+        let order_form_list: Vec<OrderFormFieldInput> = order_form.into_iter().map(|f| OrderFormFieldInput {
+            key: f.key,
+            label: f.label,
+            field_type: f.field_type,
+            required: f.required,
+        }).collect();
+        
         self.runtime.schedule_operation(&Operation::CreateProduct {
-            name,
-            description,
-            link: link.unwrap_or_default(),
-            data_blob_hash: data_blob_hash.unwrap_or_default(),
-            image_preview_hash: image_preview_hash.unwrap_or_default(),
+            public_data: public_data_map,
             price: amount,
+            private_data: private_data_map,
+            success_message,
+            order_form: order_form_list,
         });
         "ok".to_string()
     }
 
-    async fn update_product(&self, product_id: String, name: Option<String>, description: Option<String>, link: Option<String>, data_blob_hash: Option<String>, image_preview_hash: Option<String>, price: Option<String>) -> String {
+    /// Update an existing product
+    async fn update_product(
+        &self,
+        product_id: String,
+        public_data: Option<Vec<KeyValueInput>>,
+        price: Option<String>,
+        private_data: Option<Vec<KeyValueInput>>,
+        success_message: Option<String>,
+        order_form: Option<Vec<OrderFormFieldInputGql>>,
+    ) -> String {
         let price_amount = price.and_then(|p| p.parse::<Amount>().ok());
+        let public_data_map = public_data.map(|v| v.into_iter().map(|kv| (kv.key, kv.value)).collect());
+        let private_data_map = private_data.map(|v| v.into_iter().map(|kv| (kv.key, kv.value)).collect());
+        let order_form_list = order_form.map(|v| v.into_iter().map(|f| OrderFormFieldInput {
+            key: f.key,
+            label: f.label,
+            field_type: f.field_type,
+            required: f.required,
+        }).collect());
+        
         self.runtime.schedule_operation(&Operation::UpdateProduct {
             product_id,
-            name,
-            description,
-            link,
-            data_blob_hash,
-            image_preview_hash,
+            public_data: public_data_map,
             price: price_amount,
+            private_data: private_data_map,
+            success_message,
+            order_form: order_form_list,
         });
         "ok".to_string()
     }
@@ -527,13 +681,24 @@ impl MutationRoot {
         "ok".to_string()
     }
 
-    async fn transfer_to_buy(&self, owner: AccountOwner, product_id: String, amount: String, target_account: AccountInput) -> String {
+    /// Purchase a product with order form data
+    async fn transfer_to_buy(
+        &self,
+        owner: AccountOwner,
+        product_id: String,
+        amount: String,
+        target_account: AccountInput,
+        order_data: Vec<KeyValueInput>,
+    ) -> String {
         let fungible_account = linera_sdk::abis::fungible::Account { chain_id: target_account.chain_id, owner: target_account.owner };
+        let order_data_map: OrderResponses = order_data.into_iter().map(|kv| (kv.key, kv.value)).collect();
+        
         self.runtime.schedule_operation(&Operation::TransferToBuy {
             owner,
             product_id,
             amount: amount.parse::<Amount>().unwrap_or_default(),
             target_account: fungible_account,
+            order_data: order_data_map,
         });
         "ok".to_string()
     }
@@ -545,4 +710,19 @@ impl MutationRoot {
         self.runtime.schedule_operation(&Operation::ReadDataBlob { hash: hash.clone() });
         format!("Data blob read scheduled for hash: {}", hash)
     }
+}
+
+// Input types for GraphQL mutations
+#[derive(InputObject)]
+struct KeyValueInput {
+    key: String,
+    value: String,
+}
+
+#[derive(InputObject)]
+struct OrderFormFieldInputGql {
+    key: String,
+    label: String,
+    field_type: String,
+    required: bool,
 }

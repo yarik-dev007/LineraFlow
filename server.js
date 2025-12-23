@@ -1,4 +1,4 @@
-import { WebSocketServer } from 'ws';
+import http from 'http';
 import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -8,11 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = 8070;
-const wss = new WebSocketServer({ port: PORT, host: '0.0.0.0' });
 
-console.log(`📦 Linera Blob Server running on port ${PORT}`);
-
-// Helper to delete files safely
 const cleanup = (filePath) => {
   try {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
@@ -21,18 +17,37 @@ const cleanup = (filePath) => {
   }
 };
 
-wss.on('connection', (ws) => {
-  console.log('Client connected');
+const server = http.createServer((req, res) => {
+  // CORS Headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  ws.on('message', (message) => {
-    try {
-      const data = JSON.parse(message);
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
 
-      if (data.type === 'publish_blob' && data.file) {
+  if (req.method === 'POST' && req.url === '/upload') {
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body);
+
+        if (!data.file) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'No file data provided' }));
+          return;
+        }
+
         console.log(`Received file upload request (${data.fileType || 'unknown'})`);
 
         // 1. Decode Base64
-        // Handle "data:image/png;base64,..." or raw base64
         const base64Data = data.file.includes('base64,')
           ? data.file.split('base64,')[1]
           : data.file;
@@ -56,57 +71,64 @@ wss.on('connection', (ws) => {
         // 4. Publish to Linera
         const command = `linera publish-data-blob "${tempFilePath}"`;
 
+        const respond = (status, content) => {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(content));
+        };
+
         const tryPublish = (cmd, onError) => {
           exec(cmd, (error, stdout, stderr) => {
             if (error) {
               console.error(`Command failed: ${cmd}\n${error.message}`);
               if (onError) onError();
               else {
-                ws.send(JSON.stringify({ type: 'blob_error', message: 'Failed to publish blob' }));
+                respond(500, { error: 'Failed to publish blob', details: error.message });
                 cleanup(tempFilePath);
               }
               return;
             }
 
-            // 5. Parse Hash
             const match = stdout.match(/([a-f0-9]{64})/);
             if (match) {
               const hash = match[1];
               console.log(`✅ Blob published: ${hash}`);
-              ws.send(JSON.stringify({ type: 'blob_published', hash: hash }));
+              respond(200, { hash });
             } else {
-              console.error('Could not parse hash from output:', stdout);
-              ws.send(JSON.stringify({ type: 'blob_error', message: 'Could not parse blob hash from CLI output' }));
+              console.error('Could not parse hash:', stdout);
+              respond(500, { error: 'Could not parse blob hash' });
             }
-
             cleanup(tempFilePath);
           });
         };
 
-        // Try direct command first
+        // Execution Logic
         tryPublish(command, () => {
-          // Fallback: Try WSL if on Windows
           if (process.platform === 'win32') {
             console.log('Retrying with WSL...');
-
-            // Re-write file if it was deleted by cleanup (though cleanup is inside callback, sync logic might race or cleanup might have happened)
+            // Re-write file if needed because cleanup might not have happened yet but to be safe
             if (!fs.existsSync(tempFilePath)) fs.writeFileSync(tempFilePath, buffer);
 
-            // Convert path to WSL format: C:\Users\Admin... -> /mnt/c/Users/Admin...
             let wslPath = tempFilePath.replace(/\\/g, '/');
             if (wslPath.match(/^[a-zA-Z]:/)) {
               wslPath = `/mnt/${wslPath[0].toLowerCase()}${wslPath.slice(2)}`;
             }
-
             const wslCommand = `wsl ~/.cargo/bin/linera publish-data-blob "${wslPath}"`;
             tryPublish(wslCommand, null);
           }
         });
-      }
 
-    } catch (e) {
-      console.error('Error processing message:', e);
-      ws.send(JSON.stringify({ type: 'blob_error', message: 'Invalid JSON or server error' }));
-    }
-  });
+      } catch (e) {
+        console.error('Processing error:', e);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Server error parsing request' }));
+      }
+    });
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`📦 Linera Blob Server (HTTP) running on port ${PORT}`);
 });

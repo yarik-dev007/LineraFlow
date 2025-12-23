@@ -151,7 +151,7 @@ async function syncProducts() {
     console.log('Syncing products...');
     const query = `query {
         allProducts {
-            id, author, authorChainId, name, description, price, dataBlobHash, imagePreviewHash, link
+            id, author, authorChainId, publicData { key value }, price
         }
     }`;
 
@@ -166,6 +166,18 @@ async function syncProducts() {
 
         for (const p of products) {
             try {
+                // Parse Public Data
+                const getVal = (key) => p.publicData.find(k => k.key === key)?.value || '';
+                const name = getVal('name');
+                const description = getVal('description');
+                const imageHash = getVal('image_preview_hash');
+                const type = getVal('type');
+                const category = getVal('category');
+
+                // Note: file_hash is typically private, but if exposed in publicData we can map it.
+                // Otherwise it will be empty in public index.
+                const fileHash = getVal('data_blob_hash');
+
                 // Find and deduplicate
                 const duplicates = await pb.collection('products').getFullList({
                     filter: `product_id="${p.id}"`,
@@ -176,13 +188,9 @@ async function syncProducts() {
                 const existing = duplicates.length > 0 ? duplicates[0] : null;
 
                 if (duplicates.length > 1) {
-                    console.warn(`🧹 [SYNC] Found ${duplicates.length} records for product ${p.id}. Keeping latest (${existing.id}), deleting ${duplicates.length - 1} duplicates...`);
+                    console.warn(`🧹 [SYNC] Found ${duplicates.length} records for product ${p.id}. Cleaning up...`);
                     for (let i = 1; i < duplicates.length; i++) {
-                        try {
-                            await pb.collection('products').delete(duplicates[i].id);
-                        } catch (err) {
-                            console.error(`❌ Failed to delete duplicate ${duplicates[i].id}:`, err.message);
-                        }
+                        try { await pb.collection('products').delete(duplicates[i].id); } catch (e) { }
                     }
                 }
 
@@ -190,21 +198,22 @@ async function syncProducts() {
                 data.append('product_id', p.id);
                 data.append('owner', p.author);
                 data.append('chain_id', p.authorChainId);
-                data.append('name', p.name);
-                data.append('description', p.description);
+                data.append('name', name);
+                data.append('description', description);
                 data.append('price', priceNum);
-                data.append('file_name', p.name);
-                data.append('image_preview_hash', p.image_preview_hash || p.imagePreviewHash || '');
-                data.append('file_hash', p.data_blob_hash || p.dataBlobHash || '');
+                data.append('file_name', name); // Use name as filename fallback
+                data.append('image_preview_hash', imageHash);
+                data.append('file_hash', fileHash);
+                data.append('type', type);
+                data.append('category', category);
 
                 // Image Sync
-                const imageHash = p.image_preview_hash || p.imagePreviewHash;
                 if (imageHash) {
                     const hasImage = existing && existing.image_preview;
-                    const hashDiff = existing && (existing.image_preview_hash || existing.imagePreviewHash) !== imageHash;
+                    const hashDiff = existing && existing.image_preview_hash !== imageHash;
 
                     if (!hasImage || hashDiff) {
-                        console.log(`🖼️  [SYNC] Fetching blob ${imageHash.substring(0, 8)} for ${p.name}...`);
+                        console.log(`🖼️  [SYNC] Fetching blob ${imageHash.substring(0, 8)} for ${name}...`);
                         const blobQuery = `query { dataBlob(hash: "${imageHash}") }`;
                         const blobRes = await fetchGraphQL(blobQuery);
                         const bytes = blobRes.data?.dataBlob;
@@ -217,11 +226,10 @@ async function syncProducts() {
                 }
 
                 if (existing) {
-                    // Only update if something changed? For now update always to be safe
                     await pb.collection('products').update(existing.id, data);
                 } else {
                     await pb.collection('products').create(data);
-                    console.log(`✅ [SYNC] Created product: ${p.id.substring(0, 8)}... (${p.name})`);
+                    console.log(`✅ [SYNC] Created product: ${p.id.substring(0, 8)}... (${name})`);
                 }
             } catch (e) {
                 console.error(`❌ [SYNC] Error for product ${p.id}:`, e.message);

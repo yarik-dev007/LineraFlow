@@ -132,22 +132,29 @@ impl Contract for DonationsContract {
             Operation::GetDonationsByDonor { owner } => {
                 match self.state.list_donations_by_donor(owner).await { Ok(v) => ResponseData::Donations(v), Err(_) => ResponseData::Donations(Vec::new()) }
             }
-            Operation::CreateProduct { name, description, link, data_blob_hash, image_preview_hash, price } => {
+            Operation::CreateProduct { public_data, price, private_data, success_message, order_form } => {
                 let owner = self.runtime.authenticated_signer().expect("Authentication required");
                 let ts = self.runtime.system_time().micros();
                 let chain_id = self.runtime.chain_id();
                 let product_id = format!("{}-{}", ts, chain_id);
                 
+                // Convert OrderFormFieldInput to OrderFormField
+                let order_form_fields: Vec<donations::OrderFormField> = order_form.into_iter().map(|f| donations::OrderFormField {
+                    key: f.key,
+                    label: f.label,
+                    field_type: f.field_type,
+                    required: f.required,
+                }).collect();
+                
                 let product = donations::Product {
                     id: product_id.clone(),
                     author: owner,
                     author_chain_id: chain_id.to_string(),
-                    name: name.clone(),
-                    description: description.clone(),
-                    link: link.clone(),
-                    data_blob_hash: data_blob_hash.clone(),
-                    image_preview_hash: image_preview_hash.clone(),
+                    public_data,
                     price,
+                    private_data,
+                    success_message,
+                    order_form: order_form_fields,
                     created_at: ts,
                 };
                 
@@ -167,9 +174,20 @@ impl Contract for DonationsContract {
                 
                 ResponseData::Ok
             }
-            Operation::UpdateProduct { product_id, name, description, link, data_blob_hash, image_preview_hash, price } => {
+            Operation::UpdateProduct { product_id, public_data, price, private_data, success_message, order_form } => {
                 let owner = self.runtime.authenticated_signer().expect("Authentication required");
-                self.state.update_product(&product_id, owner, name, description, link, data_blob_hash, image_preview_hash, price).await.expect("Failed to update product");
+                
+                // Convert Option<Vec<OrderFormFieldInput>> to Option<Vec<OrderFormField>>
+                let order_form_fields = order_form.map(|fields| {
+                    fields.into_iter().map(|f| donations::OrderFormField {
+                        key: f.key,
+                        label: f.label,
+                        field_type: f.field_type,
+                        required: f.required,
+                    }).collect()
+                });
+                
+                self.state.update_product(&product_id, owner, public_data, price, private_data, success_message, order_form_fields).await.expect("Failed to update product");
                 
                 let product = self.state.get_product(&product_id).await.expect("Failed to get product").expect("Product not found");
                 let ts = self.runtime.system_time().micros();
@@ -210,14 +228,10 @@ impl Contract for DonationsContract {
                 
                 ResponseData::Ok
             }
-            Operation::TransferToBuy { owner, product_id, amount, target_account } => {
+            Operation::TransferToBuy { owner, product_id, amount, target_account, order_data } => {
                 self.runtime.check_account_permission(owner).expect("Permission denied");
                 
-                // NOTE: We do NOT check for product existence or price match locally.
-                // The product exists on another chain (Author/Main), and we trust the UI/User input.
-                // Validation will effectively happen at the destination if logic requires, but here we just transfer.
-                
-                // Transfer full amount to author (no commission for now)
+                // Transfer full amount to author
                 let target_account_norm = self.normalize_account(target_account);
                 self.runtime.transfer(owner, target_account_norm, amount);
                 
@@ -242,13 +256,32 @@ impl Contract for DonationsContract {
                     if let Some(main_chain_id_str) = main_chain_str {
                         if let Ok(main_chain_id) = main_chain_id_str.parse() {
                             self.runtime.prepare_message(Message::ProductPurchased {
-                                purchase_id,
-                                product_id,
+                                purchase_id: purchase_id.clone(),
+                                product_id: product_id.clone(),
                                 buyer: owner,
                                 buyer_chain_id,
                                 seller,
                                 amount,
                             }).with_authentication().send_to(main_chain_id);
+                        }
+                    }
+                }
+                
+                // NEW: Send order notification directly to seller's chain
+                if let Ok(seller_chain_str) = self.state.subscriptions.get(&seller).await {
+                    if let Some(seller_chain_id_str) = seller_chain_str {
+                        if let Ok(seller_chain_id) = seller_chain_id_str.parse() {
+                            if seller_chain_id != buyer_chain_id {
+                                self.runtime.prepare_message(Message::OrderReceived {
+                                    purchase_id: purchase_id.clone(),
+                                    product_id: product_id.clone(),
+                                    buyer: owner,
+                                    buyer_chain_id,
+                                    amount,
+                                    order_data: order_data.clone(),
+                                    timestamp: ts,
+                                }).with_authentication().send_to(seller_chain_id);
+                            }
                         }
                     }
                 }
@@ -326,9 +359,12 @@ impl Contract for DonationsContract {
                             id: purchase_id.clone(),
                             product_id: product_id.clone(),
                             buyer,
+                            buyer_chain_id: buyer_chain_id.to_string(),
                             seller,
+                            seller_chain_id: product.author_chain_id.clone(),
                             amount,
                             timestamp: ts,
+                            order_data: std::collections::BTreeMap::new(), // Main chain doesn't have order data
                             product,
                         };
                         let _ = self.state.record_purchase(purchase).await;
@@ -352,12 +388,32 @@ impl Contract for DonationsContract {
                     id: purchase_id,
                     product_id: product.id.clone(),
                     buyer,
+                    buyer_chain_id: self.runtime.chain_id().to_string(),
                     seller: product.author,
+                    seller_chain_id: product.author_chain_id.clone(),
                     amount: product.price,
                     timestamp: ts,
+                    order_data: std::collections::BTreeMap::new(), // Empty for now
                     product,
                 };
                 let _ = self.state.record_purchase(purchase).await;
+            }
+            Message::OrderReceived { purchase_id, product_id, buyer, buyer_chain_id: _, amount, order_data: _, timestamp } => {
+                // Seller's chain receives order notification with buyer's form data
+                // This is stored so seller can query order details
+                // Extract seller before emitting to avoid borrow conflict
+                let seller = self.runtime.authenticated_signer().unwrap_or(buyer);
+                self.runtime.emit("donations_events".into(), &DonationsEvent::OrderPlaced {
+                    purchase_id: purchase_id.clone(),
+                    product_id: product_id.clone(),
+                    buyer,
+                    seller,
+                    amount,
+                    timestamp,
+                });
+                
+                // Optionally store the full order details if we want to query them later
+                // For now we just emit the event
             }
         }
     }
@@ -396,22 +452,29 @@ impl DonationsContract {
                         let _ = self.state.delete_product(&product_id, author).await;
                         let _ = self.state.create_product(product).await;
                     }
-                    DonationsEvent::ProductDeleted { product_id, author, timestamp: _ } => {
-                        let _ = self.state.delete_product(&product_id, author).await;
-                    }
                     DonationsEvent::ProductPurchased { purchase_id, product_id, buyer, seller, amount, timestamp } => {
                         if let Ok(Some(product)) = self.state.get_product(&product_id).await {
                             let purchase = donations::Purchase {
                                 id: purchase_id,
                                 product_id,
                                 buyer,
+                                buyer_chain_id: current_chain.to_string(),
                                 seller,
+                                seller_chain_id: product.author_chain_id.clone(),
                                 amount,
                                 timestamp,
+                                order_data: std::collections::BTreeMap::new(), // Event doesn't contain order_data
                                 product,
                             };
                             let _ = self.state.record_purchase(purchase).await;
                         }
+                    }
+                    DonationsEvent::OrderPlaced { purchase_id: _, product_id: _, buyer: _, seller: _, amount: _, timestamp: _ } => {
+                        // Order placed events are handled on seller's chain
+                        // We can add order storage logic here if needed
+                    }
+                    DonationsEvent::ProductDeleted { product_id, author, timestamp: _ } => {
+                        let _ = self.state.delete_product(&product_id, author).await;
                     }
                 }
             }

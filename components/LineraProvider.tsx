@@ -112,7 +112,7 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
     }, [state.client, state.chainId, queryBalance]);
 
-    const connectWallet = async () => {
+    const connectWallet = React.useCallback(async () => {
         // Allow retries if not already loading/ready
         if (state.status === 'Loading' || state.status === 'Ready') {
             return;
@@ -168,7 +168,7 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 error: err as Error,
             }));
         }
-    };
+    }, [state.status]);
 
     useEffect(() => {
         if (state.status === 'Ready' && state.application && state.accountOwner) {
@@ -176,11 +176,11 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         }
     }, [state.status, state.application, state.accountOwner, queryBalance]);
 
-    const contextValue: LineraContextType = {
+    const contextValue: LineraContextType = React.useMemo(() => ({
         ...state,
         connectWallet,
         queryBalance
-    };
+    }), [state, connectWallet, queryBalance]);
 
     return <LineraContext.Provider value={contextValue}>{children}</LineraContext.Provider>;
 };

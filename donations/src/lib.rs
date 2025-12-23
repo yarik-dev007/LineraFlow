@@ -1,6 +1,11 @@
 use async_graphql::{Request, Response, SimpleObject, InputObject};
 use linera_sdk::linera_base_types::{AccountOwner, Amount, ContractAbi, ServiceAbi, ChainId};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+// Type aliases for custom fields
+pub type CustomFields = BTreeMap<String, String>;
+pub type OrderResponses = BTreeMap<String, String>;
 
 #[derive(Debug, Deserialize, Serialize)]
 pub enum Message {
@@ -41,6 +46,16 @@ pub enum Message {
         buyer: AccountOwner,
         purchase_id: String,
         product: Product,
+    },
+    // NEW: Order notification to seller
+    OrderReceived {
+        purchase_id: String,
+        product_id: String,
+        buyer: AccountOwner,
+        buyer_chain_id: ChainId,
+        amount: Amount,
+        order_data: OrderResponses,
+        timestamp: u64,
     },
 }
 
@@ -115,31 +130,47 @@ pub struct TotalAmountView {
     pub amount: Amount,
 }
 
-// Marketplace structures
+// NEW: Order form field definition
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct OrderFormField {
+    pub key: String,
+    pub label: String,
+    pub field_type: String,  // "text", "email", "textarea", "select", etc.
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, InputObject)]
+pub struct OrderFormFieldInput {
+    pub key: String,
+    pub label: String,
+    pub field_type: String,
+    pub required: bool,
+}
+
+// NEW: Flexible Product structure
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 pub struct Product {
     pub id: String,
     pub author: AccountOwner,
     pub author_chain_id: String,
-    pub name: String,
-    pub description: String,
-    pub link: String,
-    pub data_blob_hash: String,
-    pub image_preview_hash: String,
+    
+    // Public data (visible to all) - includes name, description, image_preview_hash, type, etc.
+    pub public_data: CustomFields,
     pub price: Amount,
+    
+    // Private data (visible after purchase) - includes data_blob_hash, links, etc.
+    pub private_data: CustomFields,
+    
+    // Success message shown after purchase
+    pub success_message: Option<String>,
+    
+    // Order form template
+    pub order_form: Vec<OrderFormField>,
+    
     pub created_at: u64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, InputObject)]
-pub struct ProductInput {
-    pub name: String,
-    pub description: String,
-    pub link: String,
-    pub data_blob_hash: String,
-    pub image_preview_hash: String,
-    pub price: String,
-}
-
+// Legacy ProductView for backward compatibility in queries
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 pub struct ProductView {
     pub id: String,
@@ -154,14 +185,22 @@ pub struct ProductView {
     pub created_at: u64,
 }
 
+// NEW: Purchase with order data
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 pub struct Purchase {
     pub id: String,
     pub product_id: String,
     pub buyer: AccountOwner,
+    pub buyer_chain_id: String,
     pub seller: AccountOwner,
+    pub seller_chain_id: String,
     pub amount: Amount,
     pub timestamp: u64,
+    
+    // Order responses from buyer
+    pub order_data: OrderResponses,
+    
+    // Product snapshot at time of purchase
     pub product: Product,
 }
 
@@ -188,6 +227,8 @@ pub enum DonationsEvent {
     ProductUpdated { product: Product, timestamp: u64 },
     ProductDeleted { product_id: String, author: AccountOwner, timestamp: u64 },
     ProductPurchased { purchase_id: String, product_id: String, buyer: AccountOwner, seller: AccountOwner, amount: Amount, timestamp: u64 },
+    // NEW: Order placed event
+    OrderPlaced { purchase_id: String, product_id: String, buyer: AccountOwner, seller: AccountOwner, amount: Amount, timestamp: u64 },
 }
 
 pub struct DonationsAbi;
@@ -217,32 +258,39 @@ pub enum Operation {
     GetProfile { owner: AccountOwner },
     GetDonationsByRecipient { owner: AccountOwner },
     GetDonationsByDonor { owner: AccountOwner },
+    
+    // NEW: Flexible CreateProduct
     CreateProduct {
-        name: String,
-        description: String,
-        link: String,
-        data_blob_hash: String,
-        image_preview_hash: String,
+        public_data: CustomFields,
         price: Amount,
+        private_data: CustomFields,
+        success_message: Option<String>,
+        order_form: Vec<OrderFormFieldInput>,
     },
+    
+    // NEW: Flexible UpdateProduct
     UpdateProduct {
         product_id: String,
-        name: Option<String>,
-        description: Option<String>,
-        link: Option<String>,
-        data_blob_hash: Option<String>,
-        image_preview_hash: Option<String>,
+        public_data: Option<CustomFields>,
         price: Option<Amount>,
+        private_data: Option<CustomFields>,
+        success_message: Option<String>,
+        order_form: Option<Vec<OrderFormFieldInput>>,
     },
+    
     DeleteProduct {
         product_id: String,
     },
+    
+    // NEW: TransferToBuy with order data
     TransferToBuy {
         owner: AccountOwner,
         product_id: String,
         amount: Amount,
         target_account: linera_sdk::abis::fungible::Account,
+        order_data: OrderResponses,
     },
+    
     ReadDataBlob {
         hash: String,
     },
