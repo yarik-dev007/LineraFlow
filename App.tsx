@@ -124,6 +124,7 @@ const AppContent: React.FC = () => {
 
     const unsubProducts = pb.collection('products').subscribe('*', (e) => {
       console.log('🔔 [REALTIME] Product event:', e.action);
+      window.dispatchEvent(new CustomEvent('pb-refresh-products', { detail: { action: e.action, record: e.record } }));
     });
 
     return () => {

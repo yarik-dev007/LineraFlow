@@ -12,9 +12,10 @@ interface ProductListProps {
     onView?: (product: Product) => Promise<string | null>;
     activeTab: 'BROWSE' | 'MY_ITEMS' | 'PURCHASES';
     isPurchased?: boolean;
+    deletingIds?: Set<string>;
 }
 
-const ProductList: React.FC<ProductListProps> = ({ products, currentUserAddress, onBuy, onEdit, onDelete, onDownload, onView, activeTab, isPurchased }) => {
+const ProductList: React.FC<ProductListProps> = ({ products, currentUserAddress, onBuy, onEdit, onDelete, onDownload, onView, activeTab, isPurchased, deletingIds }) => {
     if (products.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-12 bg-white border-2 border-dashed border-gray-300">
@@ -40,6 +41,7 @@ const ProductList: React.FC<ProductListProps> = ({ products, currentUserAddress,
                     onView={onView}
                     activeTab={activeTab}
                     isPurchased={isPurchased}
+                    isDeleting={deletingIds?.has(product.id)}
                 />
             ))}
         </div>

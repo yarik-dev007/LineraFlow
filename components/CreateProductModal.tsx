@@ -78,10 +78,12 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
         if (e.target.files && e.target.files[0]) {
             if (type === 'product') {
                 setFile(e.target.files[0]);
+                setBlobHash(''); // Reset hash to force re-upload
             } else {
                 setPreviewFile(e.target.files[0]);
+                setPreviewBlobHash(''); // Reset hash to force re-upload
             }
-            setUploadStatus(`Click "Publish" for ${type === 'product' ? 'product file' : 'preview image'}`);
+            setUploadStatus(`Click "Publish" for new ${type === 'product' ? 'product file' : 'preview image'}`);
         }
     };
 

@@ -12,9 +12,10 @@ interface ProductCardProps {
     onDownload?: (product: Product) => void;
     onView?: (product: Product) => Promise<string | null>;
     activeTab?: 'BROWSE' | 'MY_ITEMS' | 'PURCHASES';
+    isDeleting?: boolean;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView, activeTab = 'BROWSE' }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView, activeTab = 'BROWSE', isDeleting = false }) => {
     const [localUrl, setLocalUrl] = React.useState<string | null>(null);
     const [isViewLoading, setIsViewLoading] = React.useState(false);
 
@@ -73,6 +74,13 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                 <div className="absolute top-2 right-2 bg-linera-red text-white border-2 border-deep-black px-2 py-1 font-mono font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
                     {product.price} LIN
                 </div>
+
+                {isDeleting && (
+                    <div className="absolute inset-0 bg-white/80 backdrop-blur-[2px] z-20 flex flex-col items-center justify-center gap-2">
+                        <Loader2 className="w-8 h-8 animate-spin text-linera-red" />
+                        <span className="font-mono text-xs font-bold uppercase tracking-widest text-deep-black">Deleting...</span>
+                    </div>
+                )}
             </div>
 
             {/* Content */}
@@ -114,7 +122,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                             </button>
                             <button
                                 onClick={() => onDelete?.(product)}
-                                className="bg-white border-2 border-deep-black hover:bg-red-50 text-red-600 py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                disabled={isDeleting}
+                                className="bg-white border-2 border-deep-black hover:bg-red-50 text-red-600 py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Delete Product"
                             >
                                 <Trash2 className="w-4 h-4" />
