@@ -8,9 +8,12 @@ interface ProductListProps {
     onBuy: (product: Product) => void;
     onEdit: (product: Product) => void;
     onDelete: (product: Product) => void;
+    onDownload?: (product: Product) => void;
+    onView?: (product: Product) => Promise<string | null>;
+    isPurchased?: boolean;
 }
 
-const ProductList: React.FC<ProductListProps> = ({ products, currentUserAddress, onBuy, onEdit, onDelete }) => {
+const ProductList: React.FC<ProductListProps> = ({ products, currentUserAddress, onBuy, onEdit, onDelete, onDownload, onView, isPurchased }) => {
     if (products.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-12 bg-white border-2 border-dashed border-gray-300">
@@ -25,10 +28,16 @@ const ProductList: React.FC<ProductListProps> = ({ products, currentUserAddress,
                 <ProductCard
                     key={product.id}
                     product={product}
-                    isOwner={product.author === currentUserAddress || product.authorAddress === currentUserAddress}
+                    isOwner={
+                        (product.author?.toLowerCase() === currentUserAddress?.toLowerCase()) ||
+                        (product.authorAddress?.toLowerCase() === currentUserAddress?.toLowerCase())
+                    }
                     onBuy={onBuy}
                     onEdit={onEdit}
                     onDelete={onDelete}
+                    onDownload={onDownload}
+                    onView={onView}
+                    isPurchased={isPurchased}
                 />
             ))}
         </div>

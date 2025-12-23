@@ -68,72 +68,68 @@ const AppContent: React.FC = () => {
   };
 
   // 1. Fetch Global Data (Profiles, Donations & Products)
+  // We keep this separate to allow manual refreshes or specific trigger refreshes
+  const fetchData = async (silent = false) => {
+    try {
+      if (!silent) console.log('🔄 [App] Fetching global data...');
+      const records = await pb.collection('profiles').getFullList();
+      const donations = await pb.collection('donations').getFullList({
+        sort: '-timestamp'
+      });
+      const productsList = await pb.collection('products').getFullList();
+
+      setAllDonations(donations);
+
+      const mappedCreators: Creator[] = records.map((record: any) => {
+        const creatorDonations = donations.filter((d: any) => d.to_owner === record.owner);
+        const raised = creatorDonations.reduce((sum: number, d: any) => sum + d.amount, 0);
+        const recentDonations = creatorDonations.slice(0, 3);
+
+        // Count products for this creator
+        const productCount = productsList.filter((p: any) => p.owner === record.owner).length;
+
+        return {
+          id: record.id,
+          name: record.name || 'Unknown',
+          category: 'Creator',
+          raised: raised,
+          shortBio: record.bio ? record.bio.substring(0, 100) + '...' : 'No bio.',
+          fullBio: record.bio || 'No bio available.',
+          followers: 0,
+          contractAddress: record.owner,
+          chainId: record.chain_id,
+          socials: record.socials || [],
+          donations: recentDonations,
+          productsCount: productCount
+        };
+      });
+
+      setCreators(mappedCreators);
+    } catch (e: any) {
+      console.error('❌ [App] Global fetch failed:', e);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const records = await pb.collection('profiles').getFullList();
-        const donations = await pb.collection('donations').getFullList({
-          sort: '-timestamp'
-        });
-        const productsList = await pb.collection('products').getFullList();
-
-        setAllDonations(donations);
-
-        const mappedCreators: Creator[] = records.map((record: any) => {
-          const creatorDonations = donations.filter((d: any) => d.to_owner === record.owner);
-          const raised = creatorDonations.reduce((sum: number, d: any) => sum + d.amount, 0);
-          const recentDonations = creatorDonations.slice(0, 3);
-
-          // Count products for this creator
-          const productCount = productsList.filter((p: any) => p.owner === record.owner).length;
-
-          return {
-            id: record.id,
-            name: record.name || 'Unknown',
-            category: 'Creator',
-            raised: raised,
-            shortBio: record.bio ? record.bio.substring(0, 100) + '...' : 'No bio.',
-            fullBio: record.bio || 'No bio available.',
-            followers: 0,
-            contractAddress: record.owner,
-            chainId: record.chain_id,
-            socials: record.socials || [],
-            donations: recentDonations,
-            productsCount: productCount
-          };
-        });
-
-        setCreators(mappedCreators);
-      } catch (e: any) {
-        // Silent error handling
-      }
-    };
-
     fetchData();
 
-    // Subscribe to realtime updates
-    pb.collection('donations').subscribe('*', async (e) => {
-      if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
-        await fetchData();
-      }
+    // Single subscription setup - Log only, no automatic fetch
+    const unsubDonations = pb.collection('donations').subscribe('*', (e) => {
+      console.log('🔔 [REALTIME] Donation event:', e.action);
     });
 
-    pb.collection('profiles').subscribe('*', async (e) => {
-      if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
-        await fetchData();
-      }
+    const unsubProfiles = pb.collection('profiles').subscribe('*', (e) => {
+      console.log('🔔 [REALTIME] Profile event:', e.action);
     });
 
-    pb.collection('products').subscribe('*', async (e) => {
-      if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
-        await fetchData();
-      }
+    const unsubProducts = pb.collection('products').subscribe('*', (e) => {
+      console.log('🔔 [REALTIME] Product event:', e.action);
     });
 
     return () => {
-      pb.collection('donations').unsubscribe('*');
-      pb.collection('profiles').unsubscribe('*');
-      pb.collection('products').unsubscribe('*');
+      unsubDonations.then(fn => fn());
+      unsubProfiles.then(fn => fn());
+      unsubProducts.then(fn => fn());
     };
   }, [accountOwner]);
 

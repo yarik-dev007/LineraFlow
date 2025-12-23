@@ -255,6 +255,22 @@ impl Contract for DonationsContract {
                 
                 ResponseData::Ok
             }
+            Operation::ReadDataBlob { hash } => {
+                use linera_sdk::linera_base_types::{CryptoHash, DataBlobHash};
+                use std::str::FromStr;
+                
+                match CryptoHash::from_str(&hash) {
+                    Ok(crypto_hash) => {
+                        let blob_hash = DataBlobHash(crypto_hash);
+                        let data = self.runtime.read_data_blob(blob_hash);
+                        eprintln!("[READ_BLOB] Read {} bytes from blob {}", data.len(), hash);
+                    }
+                    Err(e) => {
+                        eprintln!("[READ_BLOB] ERROR: Invalid blob hash format '{}': {:?}", hash, e);
+                    }
+                }
+                ResponseData::Ok
+            }
         }
     }
 

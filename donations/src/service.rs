@@ -459,6 +459,21 @@ impl QueryRoot {
             Err(_) => Vec::new(),
         }
     }
+
+    /// Read a data blob by its hash (64-character hex string)
+    /// Returns the blob data as bytes, or None if the hash is invalid
+    async fn data_blob(&self, hash: String) -> Option<Vec<u8>> {
+        use linera_sdk::linera_base_types::{CryptoHash, DataBlobHash};
+        use std::str::FromStr;
+        
+        match CryptoHash::from_str(&hash) {
+            Ok(crypto_hash) => {
+                let blob_hash = DataBlobHash(crypto_hash);
+                Some(self.runtime.read_data_blob(blob_hash))
+            }
+            Err(_) => None,
+        }
+    }
 }
 
 struct MutationRoot { runtime: Arc<ServiceRuntime<DonationsService>> }
@@ -521,5 +536,13 @@ impl MutationRoot {
             target_account: fungible_account,
         });
         "ok".to_string()
+    }
+
+    /// Schedule reading a data blob by its hash
+    /// The hash should be a hex-encoded string of the blob hash (64 characters)
+    /// Data blobs must be created externally via CLI `linera publish-data-blob` or GraphQL `publishDataBlob`
+    async fn read_data_blob(&self, hash: String) -> String {
+        self.runtime.schedule_operation(&Operation::ReadDataBlob { hash: hash.clone() });
+        format!("Data blob read scheduled for hash: {}", hash)
     }
 }

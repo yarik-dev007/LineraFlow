@@ -25,6 +25,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
     const [activeUpload, setActiveUpload] = useState<'product' | 'preview' | null>(null);
 
     const wsRef = useRef<WebSocket | null>(null);
+    const activeUploadRef = useRef<'product' | 'preview' | null>(null);
 
     useEffect(() => {
         // Connect to WebSocket Server for Blob Upload
@@ -38,16 +39,21 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'blob_published') {
-                    if (activeUpload === 'product') {
+                    const currentType = activeUploadRef.current;
+                    console.log(`Blob published for type: ${currentType}, hash: ${data.hash}`);
+
+                    if (currentType === 'product') {
                         setBlobHash(data.hash);
-                    } else if (activeUpload === 'preview') {
+                    } else if (currentType === 'preview') {
                         setPreviewBlobHash(data.hash);
                     }
-                    setUploadStatus(`✅ ${activeUpload === 'product' ? 'Product' : 'Preview'} published to Linera!`);
+                    setUploadStatus(`✅ ${currentType === 'product' ? 'Product' : 'Preview'} published to Linera!`);
                     setActiveUpload(null);
+                    activeUploadRef.current = null;
                 } else if (data.type === 'blob_error') {
                     setUploadStatus(`❌ Error: ${data.message}`);
                     setActiveUpload(null);
+                    activeUploadRef.current = null;
                 }
             } catch (e) {
                 console.error('WS Error:', e);
@@ -82,6 +88,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
         if (!targetFile || !wsRef.current) return;
 
         setActiveUpload(type);
+        activeUploadRef.current = type;
         setUploadStatus(`Uploading ${type}...`);
 
         const reader = new FileReader();
@@ -108,6 +115,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
 
         setIsSubmitting(true);
         setUploadStatus('⏳ Sending transaction to Linera...');
+        console.log(`🚀 Form Submission - Product Hash: ${blobHash || 'empty'}, Preview Hash: ${previewBlobHash || 'empty'}`);
 
         try {
             // 1. Execute Blockchain Mutation
@@ -289,7 +297,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                         </button>
                         <button
                             type="submit"
-                            disabled={isLoading || isSubmitting || (file && !blobHash)}
+                            disabled={isLoading || isSubmitting || (file && !blobHash) || (previewFile && !previewBlobHash)}
                             className="flex-1 bg-linera-red text-white px-4 py-3 border-2 border-deep-black font-bold uppercase shadow-[4px_4px_0px_0px_#000000] hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading || isSubmitting ? 'Listing...' : 'List Item'}

@@ -243,6 +243,9 @@ pub enum Operation {
         amount: Amount,
         target_account: linera_sdk::abis::fungible::Account,
     },
+    ReadDataBlob {
+        hash: String,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize)]

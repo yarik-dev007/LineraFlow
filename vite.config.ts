@@ -14,6 +14,13 @@ export default defineConfig(({ mode }) => {
         'Cross-Origin-Opener-Policy': 'same-origin',
         'Cross-Origin-Embedder-Policy': 'require-corp',
       },
+      proxy: {
+        '/pb': {
+          target: env.VITE_POCKETBASE_URL || 'http://127.0.0.1:8090',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/pb/, ''),
+        }
+      }
     },
     plugins: [react()],
     build: {

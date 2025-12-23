@@ -1,36 +1,72 @@
 import React from 'react';
 import { Product } from '../types';
-import { ShoppingCart, Edit, Trash2, ExternalLink } from 'lucide-react';
+import { ShoppingCart, Edit, Trash2, ExternalLink, Eye, Loader2 } from 'lucide-react';
 
 interface ProductCardProps {
     product: Product;
     isOwner: boolean;
+    isPurchased?: boolean;
     onBuy?: (product: Product) => void;
     onEdit?: (product: Product) => void;
     onDelete?: (product: Product) => void;
+    onDownload?: (product: Product) => void;
+    onView?: (product: Product) => Promise<string | null>; // New prop to fetch blob URL
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, onBuy, onEdit, onDelete }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView }) => {
+    const [localUrl, setLocalUrl] = React.useState<string | null>(null);
+    const [isViewLoading, setIsViewLoading] = React.useState(false);
+
+    const handleView = async () => {
+        if (localUrl) {
+            window.open(localUrl, '_blank');
+            return;
+        }
+        if (onView) {
+            setIsViewLoading(true);
+            try {
+                const url = await onView(product);
+                if (url) {
+                    setLocalUrl(url);
+                    window.open(url, '_blank');
+                }
+            } catch (err) {
+                console.error('Failed to view product:', err);
+                alert('Failed to load product content.');
+            } finally {
+                setIsViewLoading(false);
+            }
+        }
+    };
+
     return (
         <div className="bg-white border-2 border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all duration-200 flex flex-col h-full group">
+            {/* ... rest of the file ... */}
 
             {/* Image Placeholder */}
             <div className="h-48 bg-gray-100 border-b-2 border-deep-black flex items-center justify-center overflow-hidden relative">
-                {product.image_preview_hash ? (
+                {product.image_preview && product.pbId && product.collectionId ? (
                     <img
-                        src={`http://localhost:8080/blobs/${product.image_preview_hash}`}
+                        src={`/pb/api/files/${product.collectionId}/${product.pbId}/${product.image_preview}`}
                         alt={product.name}
                         className="w-full h-full object-cover"
                         onError={(e) => {
-                            // If local blob fails, maybe it's not served directly or we're in a different env
-                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/400x300?text=Preview+Not+Found';
+                            console.log('PocketBase image load failed');
+                            const target = e.target as HTMLImageElement;
+                            target.parentElement?.classList.add('bg-linera-red/10');
+                            target.style.display = 'none';
                         }}
                     />
                 ) : product.image ? (
                     <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
-                ) : (
-                    <div className="text-gray-300 font-display text-4xl select-none group-hover:scale-110 transition-transform">IMG</div>
-                )}
+                ) : null}
+
+                {/* Fallback Icon when no image or image fails */}
+                <div className="absolute inset-0 flex items-center justify-center -z-10 bg-gray-50">
+                    <div className="text-gray-200 font-display text-5xl uppercase select-none group-hover:scale-110 transition-transform">
+                        {product.name.substring(0, 2)}
+                    </div>
+                </div>
 
                 {/* Price Tag */}
                 <div className="absolute top-2 right-2 bg-linera-red text-white border-2 border-deep-black px-2 py-1 font-mono font-bold text-sm shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
@@ -50,22 +86,41 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, onBuy, onEd
                 <p className="text-sm text-gray-600 mb-4 line-clamp-3 flex-1">{product.description}</p>
 
                 {/* Actions */}
-                <div className="mt-auto pt-4 border-t border-gray-100 flex gap-2">
-                    {isOwner ? (
+                <div className="mt-auto pt-4 border-t border-gray-100 flex flex-col gap-2">
+                    {isOwner || isPurchased ? (
                         <>
-                            <button
-                                onClick={() => onEdit?.(product)}
-                                className="flex-1 bg-white border border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-xs font-bold font-mono uppercase flex items-center justify-center gap-1 transition-colors"
-                            >
-                                <Edit className="w-3 h-3" /> Edit
-                            </button>
-                            <button
-                                onClick={() => onDelete?.(product)}
-                                className="bg-white border border-deep-black hover:bg-red-50 text-red-600 py-2 px-3 transition-colors"
-                                title="Delete Product"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                            </button>
+                            <div className="flex gap-2 w-full">
+                                <button
+                                    onClick={handleView}
+                                    disabled={isViewLoading}
+                                    className="flex-1 bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
+                                >
+                                    {isViewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} View
+                                </button>
+                                <button
+                                    onClick={() => onDownload?.(product)}
+                                    className="flex-1 bg-linera-red text-white hover:bg-deep-black border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                >
+                                    <ExternalLink className="w-4 h-4" /> Download
+                                </button>
+                            </div>
+                            {isOwner && (
+                                <div className="flex gap-2 w-full mt-1">
+                                    <button
+                                        onClick={() => onEdit?.(product)}
+                                        className="flex-1 bg-white border border-gray-300 hover:bg-gray-50 text-gray-500 py-1.5 px-3 text-[10px] font-bold font-mono uppercase flex items-center justify-center gap-1 transition-colors"
+                                    >
+                                        <Edit className="w-3 h-3" /> Edit Item
+                                    </button>
+                                    <button
+                                        onClick={() => onDelete?.(product)}
+                                        className="bg-white border border-gray-300 hover:bg-red-50 text-red-400 py-1.5 px-3 text-[10px] uppercase font-mono transition-colors flex items-center gap-1"
+                                        title="Delete Product"
+                                    >
+                                        <Trash2 className="w-3 h-3" /> Remove
+                                    </button>
+                                </div>
+                            )}
                         </>
                     ) : (
                         <button

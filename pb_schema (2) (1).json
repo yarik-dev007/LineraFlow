@@ -524,6 +524,215 @@
     "system": false
   },
   {
+    "id": "pbc_profiles_01",
+    "listRule": "id != ''",
+    "viewRule": "id != ''",
+    "createRule": "id != ''",
+    "updateRule": "id != ''",
+    "deleteRule": "id != ''",
+    "name": "profiles",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text_id_prof",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_owner_prof",
+        "max": 0,
+        "min": 0,
+        "name": "owner",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_chain_id_prof",
+        "max": 0,
+        "min": 0,
+        "name": "chain_id",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_name_prof",
+        "max": 0,
+        "min": 0,
+        "name": "name",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_bio_prof",
+        "max": 0,
+        "min": 0,
+        "name": "bio",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "json_socials_prof",
+        "maxSize": 0,
+        "name": "socials",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_owner ON profiles(owner)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_donations_01",
+    "listRule": "id != ''",
+    "viewRule": "id != ''",
+    "createRule": "id != ''",
+    "updateRule": "id != ''",
+    "deleteRule": "id != ''",
+    "name": "donations",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text_id_don",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_from_don",
+        "max": 0,
+        "min": 0,
+        "name": "from_owner",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_to_don",
+        "max": 0,
+        "min": 0,
+        "name": "to_owner",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "number_amount_don",
+        "max": null,
+        "min": 0,
+        "name": "amount",
+        "onlyInt": false,
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_msg_don",
+        "max": 0,
+        "min": 0,
+        "name": "message",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_ts_don",
+        "max": 0,
+        "min": 0,
+        "name": "timestamp",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_src_don",
+        "max": 0,
+        "min": 0,
+        "name": "source_chain_id",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      }
+    ],
+    "indexes": [
+      "CREATE INDEX IF NOT EXISTS idx_donations_from ON donations(from_owner)",
+      "CREATE INDEX IF NOT EXISTS idx_donations_to ON donations(to_owner)"
+    ],
+    "system": false
+  },
+  {
     "id": "pbc_products_01",
     "listRule": "id != ''",
     "viewRule": "id != ''",
@@ -670,6 +879,25 @@
         "required": false,
         "system": false,
         "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "file_image_preview",
+        "maxSelect": 1,
+        "maxSize": 5242880,
+        "mimeTypes": [
+          "image/jpeg",
+          "image/png",
+          "image/gif",
+          "image/webp"
+        ],
+        "name": "image_preview",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "thumbs": [],
+        "type": "file"
       },
       {
         "hidden": false,
