@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import ProductList from './ProductList';
 import CreateProductModal from './CreateProductModal';
 import { Product } from '../types';
+import { pb } from './pocketbase';
 
 interface MarketplaceProps {
     currentUserAddress?: string;
@@ -15,64 +16,77 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const [activeTab, setActiveTab] = useState<'BROWSE' | 'MY_ITEMS'>('BROWSE');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [products, setProducts] = useState<Product[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     // Set initial filter based on URL
     useEffect(() => {
         if (ownerId) {
             setSearchQuery('');
-            // Logic to filter by owner is in filteredProducts below
         }
     }, [ownerId]);
 
-    // MOCK DATA
-    const [products, setProducts] = useState<Product[]>([
-        {
-            id: 'prod_1',
-            name: 'Neon Genesis Abstract Art',
-            description: 'A one-of-a-kind digital masterpiece featuring cyberpunk aesthetics and vibrant neon colors.',
-            price: 10.5,
-            author: '0x1A2...B3C',
-            authorAddress: '0x1A2...B3C',
-        },
-        {
-            id: 'prod_2',
-            name: 'Retro Synthwave Track',
-            description: 'Exclusive licensing for my latest synthwave track. Perfect for background music or streaming.',
-            price: 5.0,
-            author: '0x8F9...E2D',
-            authorAddress: '0x8F9...E2D',
-        },
-        {
-            id: 'prod_3',
-            name: 'Golden Ticket Access',
-            description: 'VIP access to my private Discord community and weekly exclusive content.',
-            price: 100.0,
-            author: currentUserAddress || 'User123', // Mock owning one product if logged in
-            authorAddress: currentUserAddress || 'User123',
-        }
-    ]);
+    // Fetch Products from PocketBase
+    useEffect(() => {
+        const fetchProducts = async () => {
+            try {
+                // If filtering by owner, we could filter in query, but for now client side limit is fine for MVP
+                // or use pb.collection('products').getList(1, 50, { filter: `owner = "${ownerId}"` }) if ownerId is present
+                // But let's fetch all active products for now to allow local filtering text search
 
-    const handleCreateProduct = (data: { name: string; description: string; price: string; image?: string; fileHash?: string; fileName?: string }) => {
-        const newProduct: Product = {
-            id: `prod_${Date.now()}`,
-            name: data.name,
-            description: data.description,
-            price: parseFloat(data.price),
-            author: currentUserAddress || 'Anonymous',
-            authorAddress: currentUserAddress,
-            image: data.image
-            // In a real app we would store fileHash/fileName too, adding to mock type if needed or just logging for now
+                const records = await pb.collection('products').getFullList({
+                    sort: '-created',
+                });
+
+                const mappedProducts: Product[] = records.map((r: any) => ({
+                    id: r.id,
+                    name: r.name,
+                    description: r.description,
+                    price: r.price,
+                    image: r.image, // URL
+                    author: r.owner, // PocketBase field
+                    authorAddress: r.owner,
+                    fileHash: r.file_hash,
+                    fileName: r.file_name
+                }));
+
+                setProducts(mappedProducts);
+                setIsLoading(false);
+            } catch (e) {
+                console.error('Error fetching products:', e);
+                setIsLoading(false);
+            }
         };
 
-        console.log('Created Product with Blob:', data.fileHash);
+        fetchProducts();
 
-        setProducts([newProduct, ...products]);
+        // Realtime Subscription
+        pb.collection('products').subscribe('*', async (e) => {
+            console.log('Realtime update:', e.action, e.record);
+            if (e.action === 'create' || e.action === 'update' || e.action === 'delete') {
+                await fetchProducts();
+            }
+        });
+
+        return () => {
+            pb.collection('products').unsubscribe('*');
+        };
+    }, []);
+
+    const handleCreateProduct = (data: { name: string; description: string; price: string; image?: string; fileHash?: string; fileName?: string }) => {
+        // Modal handles the distinct DB save. 
+        // We just close the modal. Realtime subscription will update the list.
         setIsCreateModalOpen(false);
     };
 
-    const handleDeleteProduct = (product: Product) => {
-        if (window.confirm(`Are you sure you want to delete "${product.name}"?`)) {
-            setProducts(products.filter(p => p.id !== product.id));
+    const handleDeleteProduct = async (product: Product) => {
+        if (window.confirm(`Delete "${product.name}"?`)) {
+            try {
+                await pb.collection('products').delete(product.id);
+            } catch (e) {
+                console.error('Failed to delete product:', e);
+                alert('Failed to delete product.');
+            }
         }
     };
 
@@ -149,13 +163,17 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             </div>
 
             {/* Product Grid */}
-            <ProductList
-                products={filteredProducts}
-                currentUserAddress={currentUserAddress}
-                onBuy={handleBuyProduct}
-                onEdit={() => { }} // TODO: Implement Edit Modal
-                onDelete={handleDeleteProduct}
-            />
+            {isLoading ? (
+                <div className="text-center py-20 font-mono text-gray-500">Loading marketplace...</div>
+            ) : (
+                <ProductList
+                    products={filteredProducts}
+                    currentUserAddress={currentUserAddress}
+                    onBuy={handleBuyProduct}
+                    onEdit={() => { }}
+                    onDelete={handleDeleteProduct}
+                />
+            )}
 
             {/* Create Modal */}
             {isCreateModalOpen && (

@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, FileText, Image as ImageIcon } from 'lucide-react';
+import { pb } from './pocketbase';
+import { useLinera } from './LineraProvider';
 
 interface CreateProductModalProps {
     onClose: () => void;
@@ -8,13 +10,17 @@ interface CreateProductModalProps {
 }
 
 const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCreate, isLoading }) => {
+    const { accountOwner } = useLinera();
+
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
     const [price, setPrice] = useState('');
-    const [image, setImage] = useState(''); // URL for cover image
-    const [file, setFile] = useState<File | null>(null); // Actual product file
+    const [image, setImage] = useState('');
+    const [file, setFile] = useState<File | null>(null);
+
     const [uploadStatus, setUploadStatus] = useState<string>('');
     const [blobHash, setBlobHash] = useState<string>('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const wsRef = useRef<WebSocket | null>(null);
 
@@ -40,10 +46,15 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
             }
         };
 
+        ws.onerror = (e) => {
+            console.error('WebSocket error:', e);
+            setUploadStatus('❌ Connection Error. Is server running?');
+        };
+
         wsRef.current = ws;
 
         return () => {
-            ws.close();
+            if (ws.readyState === WebSocket.OPEN) ws.close();
         };
     }, []);
 
@@ -72,19 +83,47 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
         reader.readAsDataURL(file);
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!name || !description || !price) return;
 
-        // Pass blobHash if available
-        onCreate({
-            name,
-            description,
-            price,
-            image,
-            fileHash: blobHash,
-            fileName: file?.name
-        });
+        if (!accountOwner) {
+            setUploadStatus('❌ Error: Wallet not connected');
+            return;
+        }
+
+        setIsSubmitting(true);
+
+        try {
+            // 1. Create Record in PocketBase
+            const record = await pb.collection('products').create({
+                name: name,
+                description: description,
+                price: parseFloat(price),
+                image: image,
+                owner: accountOwner,
+                file_hash: blobHash || '',
+                file_name: file?.name || ''
+            });
+
+            console.log('Product created in PB:', record.id);
+
+            // 2. Call Parent
+            onCreate({
+                name,
+                description,
+                price,
+                image,
+                fileHash: blobHash,
+                fileName: file?.name
+            });
+
+        } catch (e: any) {
+            console.error('Error creating product:', e);
+            setUploadStatus(`❌ Error saving product: ${e.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -200,10 +239,10 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                         </button>
                         <button
                             type="submit"
-                            disabled={isLoading || (file && !blobHash)} // Disable if file selected but not uploaded
+                            disabled={isLoading || isSubmitting || (file && !blobHash)}
                             className="flex-1 bg-linera-red text-white px-4 py-3 border-2 border-deep-black font-bold uppercase shadow-[4px_4px_0px_0px_#000000] hover:translate-y-1 hover:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isLoading ? 'Creating...' : 'List Item'}
+                            {isLoading || isSubmitting ? 'Listing...' : 'List Item'}
                         </button>
                     </div>
 

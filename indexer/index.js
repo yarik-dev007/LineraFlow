@@ -156,6 +156,75 @@ async function syncDonations() {
     }
 }
 
+async function syncProducts() {
+    console.log('Syncing products...');
+    const query = `query {
+        allProducts {
+            id
+            author
+            authorChainId
+            name
+            description
+            price
+            dataBlobHash
+            link
+        }
+    }`;
+
+    try {
+        const result = await fetchGraphQL(query);
+        const products = result.data?.allProducts || [];
+
+        // 1. Sync Logic: Update/Create existing
+        for (const p of products) {
+            try {
+                // Find by on-chain product_id (unique)
+                const existingList = await pb.collection('products').getList(1, 1, {
+                    filter: `product_id_linera="${p.id}"`
+                });
+
+                const priceNum = parseFloat(p.price || '0');
+
+                // Map Data - Removed image/file_hash from schema as requested
+                // Storing metadata only
+                const data = {
+                    product_id_linera: p.id,
+                    owner: p.author,
+                    chain_id: p.authorChainId,
+                    name: p.name,
+                    description: p.description,
+                    price: priceNum,
+                    file_name: p.name // Fallback if file_name not in chain
+                };
+
+                if (existingList.items.length > 0) {
+                    const existing = existingList.items[0];
+                    await pb.collection('products').update(existing.id, data);
+                } else {
+                    await pb.collection('products').create(data);
+                    console.log(`✅ Created product ${p.name}`);
+                }
+            } catch (e) {
+                console.error(`❌ Error syncing product ${p.id}:`, e.message);
+            }
+        }
+
+        // 2. Deletion Sync
+        const allPbProducts = await pb.collection('products').getFullList();
+        const chainIds = new Set(products.map(p => p.id));
+
+        for (const localProd of allPbProducts) {
+            if (!chainIds.has(localProd.product_id_linera)) {
+                console.log(`🗑️ Deleting removed product: ${localProd.name}`);
+                await pb.collection('products').delete(localProd.id);
+            }
+        }
+
+    } catch (e) {
+        console.error('❌ Error syncing products:', e.message);
+    }
+}
+
 // Main Indexer
 async function start() {
     console.log('🚀 Starting Linera Indexer...');
@@ -164,6 +233,7 @@ async function start() {
     console.log('📊 Performing initial sync...');
     await syncProfiles();
     await syncDonations();
+    await syncProducts();
     console.log('✅ Initial sync complete\n');
 
     // Setup GraphQL WS subscription
@@ -196,14 +266,13 @@ async function start() {
             {
                 next: async (data) => {
                     console.log('\n🔔 Received notification:', data);
-                    // When we receive a notification, sync the data
                     console.log('🔄 Syncing data after notification...');
                     await syncProfiles();
                     await syncDonations();
+                    await syncProducts();
                 },
                 error: (err) => {
                     console.error('❌ Subscription error:', err);
-                    // Fallback to polling if subscription fails
                     console.log('⚠️  Falling back to polling mode...');
                     startPolling();
                 },
@@ -230,8 +299,8 @@ function startPolling() {
         console.log('\n⏰ Polling...');
         await syncProfiles();
         await syncDonations();
+        await syncProducts();
     }, 10000); // Poll every 10 seconds
 }
 
 start();
-
