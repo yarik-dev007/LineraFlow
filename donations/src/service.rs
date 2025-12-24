@@ -436,6 +436,19 @@ impl QueryRoot {
         }
     }
 
+    /// Get products by author with full data (for the author to edit)
+    async fn products_by_author_full(&self, owner: AccountOwner) -> Vec<ProductFullView> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.list_products_by_author(owner).await {
+                    Ok(products) => products.iter().map(|p| product_to_full_view(p)).collect(),
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+
     /// Get single product by ID (public view only)
     async fn product(&self, id: String) -> Option<ProductPublicView> {
         match DonationsState::load(self.storage_context.clone()).await {

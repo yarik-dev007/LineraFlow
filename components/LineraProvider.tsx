@@ -42,6 +42,12 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
     });
     const initRef = useRef(false);
 
+    useEffect(() => {
+        const appId = import.meta.env.VITE_LINERA_APPLICATION_ID;
+        const chainId = import.meta.env.VITE_LINERA_MAIN_CHAIN_ID;
+        console.log(`🚀 [LineraProvider] Environment Loaded:\n   - AppID: ${appId}\n   - ChainID: ${chainId}`);
+    }, []);
+
     const queryBalance = React.useCallback(async () => {
         if (!state.application || !state.accountOwner) {
             return;

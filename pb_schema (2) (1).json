@@ -937,6 +937,16 @@
           "max": 0,
           "pattern": ""
         }
+      },
+      {
+        "hidden": false,
+        "id": "json_order_form",
+        "maxSize": 0,
+        "name": "order_form",
+        "presentable": false,
+        "required": false,
+        "system": false,
+        "type": "json"
       }
     ],
     "indexes": [

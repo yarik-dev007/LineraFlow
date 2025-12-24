@@ -268,22 +268,21 @@ impl Contract for DonationsContract {
                 }
                 
                 // NEW: Send order notification directly to seller's chain
-                if let Ok(seller_chain_str) = self.state.subscriptions.get(&seller).await {
-                    if let Some(seller_chain_id_str) = seller_chain_str {
-                        if let Ok(seller_chain_id) = seller_chain_id_str.parse() {
-                            if seller_chain_id != buyer_chain_id {
-                                self.runtime.prepare_message(Message::OrderReceived {
-                                    purchase_id: purchase_id.clone(),
-                                    product_id: product_id.clone(),
-                                    buyer: owner,
-                                    buyer_chain_id,
-                                    amount,
-                                    order_data: order_data.clone(),
-                                    timestamp: ts,
-                                }).with_authentication().send_to(seller_chain_id);
-                            }
-                        }
-                    }
+                // NEW: Send order notification directly to seller's chain
+                // We trust the target_account chain_id as it comes from the product metadata
+                // and we already transferred funds there.
+                let seller_chain_id = target_account_norm.chain_id;
+
+                if seller_chain_id != buyer_chain_id {
+                    self.runtime.prepare_message(Message::OrderReceived {
+                        purchase_id: purchase_id.clone(),
+                        product_id: product_id.clone(),
+                        buyer: owner,
+                        buyer_chain_id,
+                        amount,
+                        order_data: order_data.clone(),
+                        timestamp: ts,
+                    }).with_authentication().send_to(seller_chain_id);
                 }
                 
                 ResponseData::Ok

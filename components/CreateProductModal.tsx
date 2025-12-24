@@ -325,13 +325,36 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                                 <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
                                     <ImageIcon className="w-4 h-4" /> Cover Image
                                 </label>
-                                <div className="flex items-center gap-4">
-                                    <input type="file" onChange={e => e.target.files && setPreviewImage(e.target.files[0])} className="text-sm" />
-                                    {previewImage && !previewHash && (
-                                        <button onClick={() => uploadFile(previewImage, 'preview')} className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold">Upload</button>
-                                    )}
-                                    {previewHash && <span className="text-green-600 text-xs font-bold flex items-center gap-1"><Check className="w-3 h-3" /> Uploaded</span>}
-                                </div>
+                                {previewHash ? (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                                <Check className="w-3 h-3" /> Image Uploaded
+                                            </span>
+                                            <button
+                                                onClick={() => { setPreviewHash(''); setPreviewImage(null); }}
+                                                className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
+                                            >
+                                                Replace Image
+                                            </button>
+                                        </div>
+                                        <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
+                                            {previewHash}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center gap-4">
+                                        <input type="file" onChange={e => {
+                                            if (e.target.files && e.target.files[0]) {
+                                                setPreviewImage(e.target.files[0]);
+                                            }
+                                        }} className="text-sm" />
+                                        {previewImage && (
+                                            <button onClick={() => uploadFile(previewImage, 'preview')} className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold">Upload</button>
+                                        )}
+                                        {activeUploadId === 'preview' && <span className="text-xs animate-pulse">Uploading...</span>}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
@@ -393,10 +416,18 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                                             {block.type === 'file' && (
                                                 <div className="border border-dashed border-gray-300 p-3 bg-gray-50 flex items-center justify-between">
                                                     {block.value ? (
-                                                        <div className="text-sm text-green-600 font-bold flex flex-col gap-1 items-start w-full">
-                                                            <div className="flex items-center gap-2">
-                                                                <FileText className="w-4 h-4" />
-                                                                {block.fileName || 'File Uploaded'}
+                                                        <div className="flex flex-col gap-1 w-full">
+                                                            <div className="flex items-center justify-between">
+                                                                <div className="text-sm text-green-600 font-bold flex items-center gap-2">
+                                                                    <FileText className="w-4 h-4" />
+                                                                    {block.fileName || 'File Uploaded'}
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => updatePrivateBlock(block.id, { value: '', fileName: '' })}
+                                                                    className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
+                                                                >
+                                                                    Replace File
+                                                                </button>
                                                             </div>
                                                             <div className="text-xs text-gray-500 font-mono break-all bg-white p-1 border rounded w-full select-all">
                                                                 {block.value}

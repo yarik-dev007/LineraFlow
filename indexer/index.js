@@ -14,7 +14,7 @@ if (fs.existsSync(envPath)) {
 
 // Configuration
 const LINERA_CHAIN_ID = process.env.VITE_LINERA_MAIN_CHAIN_ID || 'fcc99b4e4c6be2f33864d71de61acb33c0f692c397a32b6d64578cf0c82f7faa';
-const LINERA_APP_ID = process.env.VITE_LINERA_APPLICATION_ID || '92404c34b18d051406bcbb2ec36fbd1117e7e36ac37706fc83c3c63a4a451a9d';
+const LINERA_APP_ID = process.env.VITE_LINERA_APPLICATION_ID || 'a205b6233965c4d98d9f36dd11e1ff10693a864eb9d53d800b8cd463996d50b6';
 const LINERA_NODE_URL = `http://localhost:7071`;
 const LINERA_WS_URL = `ws://localhost:7071/ws`;
 const POCKETBASE_URL = 'http://127.0.0.1:8090';
@@ -151,7 +151,7 @@ async function syncProducts() {
     console.log('Syncing products...');
     const query = `query {
         allProducts {
-            id, author, authorChainId, publicData { key value }, price
+            id, author, authorChainId, publicData { key value }, price, orderForm { key label fieldType required }
         }
     }`;
 
@@ -173,6 +173,7 @@ async function syncProducts() {
                 const imageHash = getVal('image_preview_hash');
                 const type = getVal('type');
                 const category = getVal('category');
+                const orderForm = p.orderForm || [];
 
                 // Note: file_hash is typically private, but if exposed in publicData we can map it.
                 // Otherwise it will be empty in public index.
@@ -201,11 +202,12 @@ async function syncProducts() {
                 data.append('name', name);
                 data.append('description', description);
                 data.append('price', priceNum);
-                data.append('file_name', name); // Use name as filename fallback
+                data.append('file_name', name);
                 data.append('image_preview_hash', imageHash);
                 data.append('file_hash', fileHash);
                 data.append('type', type);
                 data.append('category', category);
+                data.append('order_form', JSON.stringify(orderForm));
 
                 // Image Sync
                 if (imageHash) {
