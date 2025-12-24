@@ -23,6 +23,12 @@ interface LineraContextType {
     connectWallet: () => Promise<void>;
     queryBalance: () => Promise<void>;
     enableAutoSign: () => Promise<void>;
+    subscribeToMyItems: (callback: () => void) => void;
+    unsubscribeFromMyItems: () => void;
+    subscribeToMyPurchases: (callback: () => void) => void;
+    unsubscribeFromMyPurchases: () => void;
+    subscribeToMarketplace: (callback: () => void) => void;
+    unsubscribeFromMarketplace: () => void;
 }
 
 const LineraContext = createContext<LineraContextType>({
@@ -33,6 +39,12 @@ const LineraContext = createContext<LineraContextType>({
     connectWallet: async () => { },
     queryBalance: async () => { },
     enableAutoSign: async () => { },
+    subscribeToMyItems: () => { },
+    unsubscribeFromMyItems: () => { },
+    subscribeToMyPurchases: () => { },
+    unsubscribeFromMyPurchases: () => { },
+    subscribeToMarketplace: () => { },
+    unsubscribeFromMarketplace: () => { },
 });
 
 export const useLinera = () => useContext(LineraContext);
@@ -47,12 +59,53 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         connectWallet: async () => { },
         queryBalance: async () => { },
         enableAutoSign: async () => { },
+        subscribeToMyItems: () => { },
+        unsubscribeFromMyItems: () => { },
+        subscribeToMyPurchases: () => { },
+        unsubscribeFromMyPurchases: () => { },
+        subscribeToMarketplace: () => { },
+        unsubscribeFromMarketplace: () => { },
     });
 
     useEffect(() => {
         const appId = import.meta.env.VITE_LINERA_APPLICATION_ID;
         const chainId = import.meta.env.VITE_LINERA_MAIN_CHAIN_ID;
         console.log(`🚀 [LineraProvider] Environment Loaded:\n   - AppID: ${appId}\n   - ChainID: ${chainId}`);
+    }, []);
+
+    // Refs for subscription callbacks
+    const myItemsCallbackRef = useRef<(() => void) | null>(null);
+    const myPurchasesCallbackRef = useRef<(() => void) | null>(null);
+    const marketplaceCallbackRef = useRef<(() => void) | null>(null);
+
+    const subscribeToMyItems = React.useCallback((callback: () => void) => {
+        console.log('📦 [LineraProvider] Subscribed to My Items updates');
+        myItemsCallbackRef.current = callback;
+    }, []);
+
+    const unsubscribeFromMyItems = React.useCallback(() => {
+        console.log('📦 [LineraProvider] Unsubscribed from My Items updates');
+        myItemsCallbackRef.current = null;
+    }, []);
+
+    const subscribeToMyPurchases = React.useCallback((callback: () => void) => {
+        console.log('🛍️ [LineraProvider] Subscribed to My Purchases updates');
+        myPurchasesCallbackRef.current = callback;
+    }, []);
+
+    const unsubscribeFromMyPurchases = React.useCallback(() => {
+        console.log('🛍️ [LineraProvider] Unsubscribed from My Purchases updates');
+        myPurchasesCallbackRef.current = null;
+    }, []);
+
+    const subscribeToMarketplace = React.useCallback((callback: () => void) => {
+        console.log('🏪 [LineraProvider] Subscribed to Marketplace updates');
+        marketplaceCallbackRef.current = callback;
+    }, []);
+
+    const unsubscribeFromMarketplace = React.useCallback(() => {
+        console.log('🏪 [LineraProvider] Unsubscribed from Marketplace updates');
+        marketplaceCallbackRef.current = null;
     }, []);
 
     const queryBalance = React.useCallback(async () => {
@@ -121,8 +174,18 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
                             localStorage.setItem(storageKey, currentHeight.toString());
                             queryBalance();
+
+                            // Call subscription callbacks if subscribed
+                            if (myItemsCallbackRef.current) myItemsCallbackRef.current();
+                            if (myPurchasesCallbackRef.current) myPurchasesCallbackRef.current();
+                            if (marketplaceCallbackRef.current) marketplaceCallbackRef.current();
                         } else if (notification.reason?.NewIncomingMessage) {
                             queryBalance();
+
+                            // Call subscription callbacks if subscribed
+                            if (myItemsCallbackRef.current) myItemsCallbackRef.current();
+                            if (myPurchasesCallbackRef.current) myPurchasesCallbackRef.current();
+                            if (marketplaceCallbackRef.current) marketplaceCallbackRef.current();
                         } else if (notification.reason?.NewOutgoingMessage) {
                             queryBalance();
                         }
@@ -251,8 +314,14 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
         ...state,
         connectWallet,
         queryBalance,
-        enableAutoSign
-    }), [state, connectWallet, queryBalance, enableAutoSign]);
+        enableAutoSign,
+        subscribeToMyItems,
+        unsubscribeFromMyItems,
+        subscribeToMyPurchases,
+        unsubscribeFromMyPurchases,
+        subscribeToMarketplace,
+        unsubscribeFromMarketplace,
+    }), [state, connectWallet, queryBalance, enableAutoSign, subscribeToMyItems, unsubscribeFromMyItems, subscribeToMyPurchases, unsubscribeFromMyPurchases, subscribeToMarketplace, unsubscribeFromMarketplace]);
 
     return <LineraContext.Provider value={contextValue}>{children}</LineraContext.Provider>;
 };

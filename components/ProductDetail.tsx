@@ -21,6 +21,9 @@ const ProductDetail: React.FC = () => {
     const isMounted = useRef(true);
 
     useEffect(() => {
+        // Scroll to top when product detail opens
+        window.scrollTo(0, 0);
+
         isMounted.current = true;
         return () => { isMounted.current = false; };
     }, []);

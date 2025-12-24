@@ -1,6 +1,6 @@
 import React from 'react';
 import { Product } from '../types';
-import { ShoppingCart, Edit, Trash2, ExternalLink, Eye, Loader2 } from 'lucide-react';
+import { ShoppingCart, Edit, Trash2, Eye, Loader2, Download } from 'lucide-react';
 
 interface ProductCardProps {
     product: Product;
@@ -45,7 +45,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
     };
 
     return (
-        <div className="bg-white border-2 border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all duration-200 flex flex-col h-full group">
+        <div
+            onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
+            className="bg-white border-2 border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all duration-200 flex flex-col h-full group cursor-pointer"
+        >
             {/* ... rest of the file ... */}
 
             {/* Image Placeholder */}
@@ -91,10 +94,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
             <div className="p-4 flex-1 flex flex-col">
                 <div className="flex justify-between items-start mb-2">
                     <div>
-                        <h3
-                            onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
-                            className="font-display text-lg leading-tight mb-1 line-clamp-2 cursor-pointer hover:underline decoration-linera-red decoration-2 underline-offset-2"
-                        >
+                        <h3 className="font-display text-lg leading-tight mb-1 line-clamp-2">
                             {product.name}
                         </h3>
                         <p className="text-xs font-mono text-gray-500 uppercase">By {product.author.substring(0, 8)}...</p>
@@ -108,29 +108,29 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                     {activeTab === 'PURCHASES' ? (
                         <div className="flex gap-2 w-full">
                             <button
-                                onClick={handleView}
+                                onClick={(e) => { e.stopPropagation(); handleView(); }}
                                 disabled={isViewLoading}
                                 className="flex-1 bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50"
                             >
                                 {isViewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />} View
                             </button>
                             <button
-                                onClick={() => onDownload?.(product)}
+                                onClick={(e) => { e.stopPropagation(); onDownload?.(product); }}
                                 className="flex-1 bg-linera-red text-white hover:bg-deep-black border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                             >
-                                <ExternalLink className="w-4 h-4" /> Download
+                                <Download className="w-4 h-4" /> Download
                             </button>
                         </div>
                     ) : activeTab === 'MY_ITEMS' ? (
                         <div className="flex gap-2 w-full">
                             <button
-                                onClick={() => onEdit?.(product)}
+                                onClick={(e) => { e.stopPropagation(); onEdit?.(product); }}
                                 className="flex-1 bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                             >
                                 <Edit className="w-4 h-4" /> Edit
                             </button>
                             <button
-                                onClick={() => onDelete?.(product)}
+                                onClick={(e) => { e.stopPropagation(); onDelete?.(product); }}
                                 disabled={isDeleting}
                                 className="bg-white border-2 border-deep-black hover:bg-red-50 text-red-600 py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-50 disabled:cursor-not-allowed"
                                 title="Delete Product"
@@ -141,32 +141,18 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                     ) : (
                         // BROWSE Tab
                         isOwner ? (
-                            <div className="flex gap-2 w-full">
-                                <div className="flex-1 text-gray-400 text-xs font-mono uppercase py-2 text-center border-2 border-dashed border-gray-200 bg-gray-50/50">
-                                    Your Product
+                            <div className="w-full">
+                                <div className="text-gray-400 text-xs font-mono uppercase py-2 text-center border-2 border-dashed border-gray-200 bg-gray-50/50">
+                                    Your Product - Click to View
                                 </div>
-                                <button
-                                    onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
-                                    className="bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                                    title="View Product Page"
-                                >
-                                    <ExternalLink className="w-4 h-4" />
-                                </button>
                             </div>
                         ) : (
-                            <div className="flex gap-2 w-full">
+                            <div className="w-full">
                                 <button
-                                    onClick={() => onBuy?.(product)}
-                                    className="flex-1 bg-deep-black text-white hover:bg-linera-red border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                    onClick={(e) => { e.stopPropagation(); onBuy?.(product); }}
+                                    className="w-full bg-deep-black text-white hover:bg-linera-red border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                                 >
                                     <ShoppingCart className="w-4 h-4" /> Buy Now
-                                </button>
-                                <button
-                                    onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
-                                    className="bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                                    title="View Product Page"
-                                >
-                                    <ExternalLink className="w-4 h-4" />
                                 </button>
                             </div>
                         )

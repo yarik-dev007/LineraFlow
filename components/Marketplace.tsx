@@ -10,6 +10,7 @@ import { pb } from './pocketbase';
 import { useLinera } from './LineraProvider';
 import { cacheManager } from '../utils/cacheManager';
 import RegistrationAlert from './RegistrationAlert';
+import { useNavigate } from 'react-router-dom';
 
 interface MarketplaceProps {
     currentUserAddress?: string;
@@ -17,7 +18,8 @@ interface MarketplaceProps {
 
 const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const { ownerId } = useParams<{ ownerId: string }>();
-    const { application, accountOwner, autoSignEnabled } = useLinera();
+    const { application, accountOwner, autoSignEnabled, subscribeToMyItems, unsubscribeFromMyItems, subscribeToMyPurchases, unsubscribeFromMyPurchases, subscribeToMarketplace, unsubscribeFromMarketplace } = useLinera();
+    const navigate = useNavigate();
     const isMountedRef = useRef(true);
     const instanceId = useRef(Math.random().toString(36).substr(2, 5));
 
@@ -51,10 +53,66 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         };
     }, []);
 
+    // Subscribe to My Items updates when on MY_ITEMS tab
+    useEffect(() => {
+        if (activeTab === 'MY_ITEMS' && myItemsMode === 'PRODUCTS') {
+            subscribeToMyItems(() => {
+                console.log('🔔 [Marketplace] My Items notification received');
+                fetchMyProducts(true); // Silent refresh
+            });
+
+            return () => {
+                unsubscribeFromMyItems();
+            };
+        }
+    }, [activeTab, myItemsMode, subscribeToMyItems, unsubscribeFromMyItems]);
+
+    // Subscribe to Purchases updates when on PURCHASES tab
+    useEffect(() => {
+        if (activeTab === 'PURCHASES') {
+            subscribeToMyPurchases(() => {
+                console.log('🔔 [Marketplace] Purchases notification received');
+                fetchPurchases(true); // Silent refresh
+            });
+
+            return () => {
+                unsubscribeFromMyPurchases();
+            };
+        }
+    }, [activeTab, subscribeToMyPurchases, unsubscribeFromMyPurchases]);
+
+    // Subscribe to Marketplace updates when on BROWSE tab
+    useEffect(() => {
+        if (activeTab === 'BROWSE') {
+            subscribeToMarketplace(() => {
+                console.log('🔔 [Marketplace] Browse notification received');
+                fetchProducts(true); // Silent refresh
+            });
+
+            return () => {
+                unsubscribeFromMarketplace();
+            };
+        }
+    }, [activeTab, subscribeToMarketplace, unsubscribeFromMarketplace]);
+
     // Fetch Products from PocketBase (Browse Tab)
     const fetchProducts = async (silent = false) => {
+        const cacheKey = `marketplace_browse_${ownerId || 'all'}`;
+
         try {
-            if (!silent) setIsLoading(true);
+            // 1. Load from cache immediately
+            const cached = cacheManager.get<Product[]>(cacheKey);
+            if (cached && cached.length > 0) {
+                console.log(`📦 [Browse] Loaded ${cached.length} items from cache`);
+                if (isMountedRef.current) {
+                    setProducts(cached);
+                    setIsLoading(false);
+                }
+            } else {
+                if (!silent) setIsLoading(true);
+            }
+
+            // 2. Fetch fresh data from PocketBase
             const filter = ownerId ? `owner="${ownerId}"` : '';
             const records = await pb.collection('products').getFullList({
                 sort: '-created_at',
@@ -62,8 +120,8 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             });
 
             const mappedProducts: Product[] = records.map((r: any) => ({
-                id: r.product_id, // Use on-chain ID
-                pbId: r.id, // PocketBase Record ID
+                id: r.product_id,
+                pbId: r.id,
                 collectionId: r.collectionId,
                 name: r.name,
                 description: r.description,
@@ -74,13 +132,13 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 authorAddress: r.owner,
                 authorChainId: r.chain_id,
                 image_preview_hash: r.image_preview_hash,
-                data_blob_hash: r.file_hash, // Map PocketBase file_hash to data_blob_hash
-                publicData: [], // Legacy items might not have publicData populated from PB
+                data_blob_hash: r.file_hash,
+                publicData: [],
                 orderForm: r.order_form || [],
                 createdAt: Date.parse(r.created) / 1000
             }));
 
-            // Deduplicate by on-chain ID
+            // Deduplicate by on-chain ID before comparing with cache
             const uniqueProducts: Product[] = [];
             const seenIds = new Set();
             for (const p of mappedProducts) {
@@ -90,7 +148,15 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 }
             }
 
-            if (isMountedRef.current) setProducts(uniqueProducts);
+            // 3. Update only if different from cache
+            const isDifferent = JSON.stringify(uniqueProducts) !== JSON.stringify(cached);
+            if (isDifferent || !cached) {
+                console.log(`✅ [Browse] Found ${uniqueProducts.length} items (${isDifferent ? 'updated' : 'same'})`);
+                if (isMountedRef.current) setProducts(uniqueProducts);
+                cacheManager.set(cacheKey, uniqueProducts);
+            } else {
+                console.log(`✅ [Browse] Data unchanged, using cache`);
+            }
         } catch (e) {
             console.error('Error fetching products:', e);
         } finally {
@@ -378,10 +444,27 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     useEffect(() => {
         const init = async () => {
             console.log('🔄 [Marketplace] Effect triggered. ActiveTab:', activeTab);
-            const silent = products.length > 0 || (activeTab === 'PURCHASES' && purchases.length > 0);
+
+            // Check cache to determine if we should do silent fetch
+            let hasCache = false;
+            if (activeTab === 'BROWSE') {
+                const cacheKey = `marketplace_browse_${ownerId || 'all'}`;
+                hasCache = !!cacheManager.get(cacheKey);
+            } else if (activeTab === 'MY_ITEMS' && accountOwner) {
+                const cacheKey = `marketplace_my_items_${accountOwner}`;
+                hasCache = !!cacheManager.get(cacheKey);
+            } else if (activeTab === 'PURCHASES' && accountOwner) {
+                const cacheKey = `marketplace_purchases_${accountOwner}`;
+                hasCache = !!cacheManager.get(cacheKey);
+            }
+
+            // Silent if we have cache or data already loaded
+            const silent = hasCache || products.length > 0 || (activeTab === 'PURCHASES' && purchases.length > 0);
+
             if (!silent) {
-                console.log('⌛ [Marketplace] Effect setting initial loading');
-                setIsLoading(true);
+                console.log('⌛ [Marketplace] No cache found, will show loading');
+            } else {
+                console.log('📦 [Marketplace] Cache exists or data loaded, silent fetch');
             }
 
             if (activeTab === 'BROWSE') await fetchProducts(silent);
@@ -457,7 +540,6 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         }
 
         try {
-            setIsLoading(true);
             const targetAccountStr = `{ chainId: "${product.authorChainId}", owner: "${product.author}" }`;
             const orderDataStr = `[${formatKv(orderData)}]`;
 
@@ -485,14 +567,12 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 console.error('❌ [Buying] Errors:', parsedResult.errors);
                 alert('Purchase failed: ' + parsedResult.errors[0].message);
             } else {
-                alert('✅ Purchase successful!');
-                // Products will stay visible - no need to refresh
+                // Products will stay visible - no need to refresh or alert
             }
         } catch (e) {
             console.error('Purchase error:', e);
             alert('Purchase failed. Check console.');
         } finally {
-            setIsLoading(false);
             setBuyingProduct(null);
         }
     };
@@ -633,7 +713,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                     <div className="flex items-center gap-4">
                         {/* Back Button */}
                         <button
-                            onClick={() => window.location.href = '/marketplace'}
+                            onClick={() => navigate('/marketplace')}
                             className="p-3 bg-deep-black text-white hover:bg-linera-red transition-colors border-2 border-deep-black shadow-hard hover:shadow-hard-hover"
                             title="Back to Marketplace"
                         >
@@ -841,7 +921,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                     onClose={() => setShowRegistrationAlert(false)}
                     onInitialize={() => {
                         setShowRegistrationAlert(false);
-                        window.location.href = '/profile';
+                        navigate('/profile');
                     }}
                 />
             )}
