@@ -169,7 +169,8 @@ async function syncProducts() {
                 // Parse Public Data
                 const getVal = (key) => p.publicData.find(k => k.key === key)?.value || '';
                 const name = getVal('name');
-                const description = getVal('description');
+                let description = getVal('description');
+                if (description) description = description.replace(/\\n/g, '\n'); // Fix escaped newlines
                 const imageHash = getVal('image_preview_hash');
                 const type = getVal('type');
                 const category = getVal('category');

@@ -12,6 +12,7 @@ import LandingPage from './components/LandingPage';
 import { WalletState, UserProfile, AppView, Creator } from './types';
 import { pb } from './components/pocketbase';
 import Marketplace from './components/Marketplace';
+import ProductDetail from './components/ProductDetail';
 
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 
@@ -292,6 +293,7 @@ const AppContent: React.FC = () => {
                 {/* Marketplace Routes */}
                 <Route path="/marketplace" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
                 <Route path="/owner/:ownerId" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
+                <Route path="/owner/:ownerId/product/:productId" element={<ProductDetail />} />
 
               </Routes>
             </main>

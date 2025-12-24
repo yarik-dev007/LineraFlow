@@ -51,8 +51,10 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const fetchProducts = async (silent = false) => {
         try {
             if (!silent) setIsLoading(true);
+            const filter = ownerId ? `owner="${ownerId}"` : '';
             const records = await pb.collection('products').getFullList({
                 sort: '-created_at',
+                filter: filter,
             });
 
             const mappedProducts: Product[] = records.map((r: any) => ({
@@ -288,6 +290,8 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                         amount
                         timestamp
                         buyer
+                        buyerChainId
+                        sellerChainId
                         orderData { key value }
                         product {
                             id
@@ -530,26 +534,35 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         <div className="w-full max-w-7xl mx-auto p-4 md:p-8 min-h-screen font-mono">
             {/* Header Controls */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-                <div className="flex bg-white border-2 border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-1">
-                    <button
-                        onClick={() => setActiveTab('BROWSE')}
-                        className={`px-4 py-2 font-bold uppercase transition-all ${activeTab === 'BROWSE' ? 'bg-deep-black text-white' : 'hover:bg-gray-100 text-deep-black'}`}
-                    >
-                        Marketplace
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('MY_ITEMS')}
-                        className={`px-4 py-2 font-bold uppercase transition-all ${activeTab === 'MY_ITEMS' ? 'bg-deep-black text-white' : 'hover:bg-gray-100 text-deep-black'}`}
-                    >
-                        My Items
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('PURCHASES')}
-                        className={`px-4 py-2 font-bold uppercase transition-all ${activeTab === 'PURCHASES' ? 'bg-deep-black text-white' : 'hover:bg-gray-100 text-deep-black'}`}
-                    >
-                        Purchases
-                    </button>
-                </div>
+                {ownerId ? (
+                    <div className="flex flex-col justify-center">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Store View</span>
+                        <div className="font-black text-xl md:text-2xl break-all uppercase border-b-4 border-linera-red inline-block pb-1">
+                            {ownerId.substring(0, 8)}...{ownerId.substring(ownerId.length - 6)}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex bg-white border-2 border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-1">
+                        <button
+                            onClick={() => setActiveTab('BROWSE')}
+                            className={`px-4 py-2 font-bold uppercase transition-all ${activeTab === 'BROWSE' ? 'bg-deep-black text-white' : 'hover:bg-gray-100 text-deep-black'}`}
+                        >
+                            Marketplace
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('MY_ITEMS')}
+                            className={`px-4 py-2 font-bold uppercase transition-all ${activeTab === 'MY_ITEMS' ? 'bg-deep-black text-white' : 'hover:bg-gray-100 text-deep-black'}`}
+                        >
+                            My Items
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('PURCHASES')}
+                            className={`px-4 py-2 font-bold uppercase transition-all ${activeTab === 'PURCHASES' ? 'bg-deep-black text-white' : 'hover:bg-gray-100 text-deep-black'}`}
+                        >
+                            Purchases
+                        </button>
+                    </div>
+                )}
 
                 <div className="flex gap-2 w-full md:w-auto">
                     <div className="relative flex-1 md:w-64">
@@ -614,7 +627,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                                         <div>
                                             <h3 className="font-bold text-xl uppercase mb-1">{order.product.name}</h3>
                                             <p className="text-sm text-gray-500 font-mono">
-                                                Order ID: {order.id.substring(0, 8)}...
+                                                Order ID: {order.id}
                                             </p>
                                         </div>
                                         <div className="text-right">
@@ -631,7 +644,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                                             <div className="font-mono text-sm break-all">
                                                 <span className="text-gray-400">Owner:</span> {order.buyer}
                                                 <br />
-                                                <span className="text-gray-400">Chain:</span> {order.buyerChainId.substring(0, 16)}...
+                                                <span className="text-gray-400">Chain:</span> {order.buyerChainId}
                                             </div>
                                         </div>
 

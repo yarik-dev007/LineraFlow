@@ -15,7 +15,10 @@ interface ProductCardProps {
     isDeleting?: boolean;
 }
 
+import { useNavigate } from 'react-router-dom';
+
 const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView, activeTab = 'BROWSE', isDeleting = false }) => {
+    const navigate = useNavigate();
     const [localUrl, setLocalUrl] = React.useState<string | null>(null);
     const [isViewLoading, setIsViewLoading] = React.useState(false);
 
@@ -46,6 +49,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
             {/* ... rest of the file ... */}
 
             {/* Image Placeholder */}
+            {/* Same Image Code as before */}
             <div className="h-48 bg-gray-100 border-b-2 border-deep-black flex items-center justify-center overflow-hidden relative">
                 {product.image_preview && product.pbId && product.collectionId ? (
                     <img
@@ -87,7 +91,12 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
             <div className="p-4 flex-1 flex flex-col">
                 <div className="flex justify-between items-start mb-2">
                     <div>
-                        <h3 className="font-display text-lg leading-tight mb-1 line-clamp-2">{product.name}</h3>
+                        <h3
+                            onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
+                            className="font-display text-lg leading-tight mb-1 line-clamp-2 cursor-pointer hover:underline decoration-linera-red decoration-2 underline-offset-2"
+                        >
+                            {product.name}
+                        </h3>
                         <p className="text-xs font-mono text-gray-500 uppercase">By {product.author.substring(0, 8)}...</p>
                     </div>
                 </div>
@@ -132,16 +141,34 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                     ) : (
                         // BROWSE Tab
                         isOwner ? (
-                            <div className="text-gray-400 text-xs font-mono uppercase py-2 text-center border-2 border-dashed border-gray-200 w-full mb-1 bg-gray-50/50">
-                                Your Product
+                            <div className="flex gap-2 w-full">
+                                <div className="flex-1 text-gray-400 text-xs font-mono uppercase py-2 text-center border-2 border-dashed border-gray-200 bg-gray-50/50">
+                                    Your Product
+                                </div>
+                                <button
+                                    onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
+                                    className="bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                    title="View Product Page"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                </button>
                             </div>
                         ) : (
-                            <button
-                                onClick={() => onBuy?.(product)}
-                                className="flex-1 bg-deep-black text-white hover:bg-linera-red border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                            >
-                                <ShoppingCart className="w-4 h-4" /> Buy Now
-                            </button>
+                            <div className="flex gap-2 w-full">
+                                <button
+                                    onClick={() => onBuy?.(product)}
+                                    className="flex-1 bg-deep-black text-white hover:bg-linera-red border-2 border-transparent hover:border-deep-black py-2 px-3 text-sm font-bold font-mono uppercase flex items-center justify-center gap-2 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                >
+                                    <ShoppingCart className="w-4 h-4" /> Buy Now
+                                </button>
+                                <button
+                                    onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
+                                    className="bg-white border-2 border-deep-black hover:bg-gray-50 text-deep-black py-2 px-3 transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,0)] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                                    title="View Product Page"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                </button>
+                            </div>
                         )
                     )}
                 </div>

@@ -224,7 +224,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
             }));
 
             // Format graphQL inputs
-            const formatKv = (list: any[]) => list.map(i => `{ key: "${i.key}", value: "${i.value.replace(/"/g, '\\"')}" }`).join(', ');
+            const formatKv = (list: any[]) => list.map(i => `{ key: "${i.key}", value: ${JSON.stringify(i.value || '')} }`).join(', ');
             const formatForm = (list: any[]) => list.map(i => `{ key: "${i.key}", label: "${i.label}", fieldType: "${i.field_type}", required: ${i.required} }`).join(', ');
 
             let mutation;
@@ -312,13 +312,26 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold uppercase">Price (LIN)</label>
-                                    <input type="number" value={price} onChange={e => setPrice(e.target.value)} className="w-full border-2 border-deep-black p-2 mt-1" placeholder="0.00" />
+                                    <input type="number" step="any" min="0" value={price} onChange={e => setPrice(e.target.value)} className="w-full border-2 border-deep-black p-2 mt-1" placeholder="0.00" />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="text-xs font-bold uppercase">Description</label>
-                                <textarea value={description} onChange={e => setDescription(e.target.value)} className="w-full border-2 border-deep-black p-2 mt-1 h-24" placeholder="Describe your product..." />
+                                <label className="text-xs font-bold uppercase flex justify-between">
+                                    Description
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setDescription(p => p + '**Bold**')} className="text-[10px] bg-gray-200 px-1 rounded hover:bg-gray-300">B</button>
+                                        <button onClick={() => setDescription(p => p + '*Italic*')} className="text-[10px] bg-gray-200 px-1 rounded hover:bg-gray-300">I</button>
+                                        <button onClick={() => setDescription(p => p + '[Link](url)')} className="text-[10px] bg-gray-200 px-1 rounded hover:bg-gray-300">Link</button>
+                                    </div>
+                                </label>
+                                <textarea
+                                    value={description}
+                                    onChange={e => setDescription(e.target.value)}
+                                    className="w-full border-2 border-deep-black p-2 mt-1 h-32 font-mono text-xs"
+                                    placeholder="Describe your product... (Markdown supported)"
+                                />
+                                <p className="text-[10px] text-gray-400 text-right">Use **bold**, *italic*, [link](url)</p>
                             </div>
 
                             <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">

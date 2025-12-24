@@ -283,6 +283,25 @@ impl Contract for DonationsContract {
                         order_data: order_data.clone(),
                         timestamp: ts,
                     }).with_authentication().send_to(seller_chain_id);
+                } else {
+                    // Same chain: Record purchase immediately if product exists locally
+                    // This covers local purchases and self-purchases
+                    if let Ok(Some(product)) = self.state.get_product(&product_id).await {
+                         let purchase = donations::Purchase {
+                            id: purchase_id.clone(),
+                            product_id: product_id.clone(),
+                            buyer: owner,
+                            buyer_chain_id: buyer_chain_id.to_string(),
+                            seller,
+                            seller_chain_id: product.author_chain_id.clone(),
+                            // ...
+                            amount,
+                            timestamp: ts,
+                            order_data: order_data.clone(),
+                            product: product.clone(),
+                        };
+                        let _ = self.state.record_purchase(purchase).await;
+                    }
                 }
                 
                 ResponseData::Ok
@@ -397,22 +416,37 @@ impl Contract for DonationsContract {
                 };
                 let _ = self.state.record_purchase(purchase).await;
             }
-            Message::OrderReceived { purchase_id, product_id, buyer, buyer_chain_id: _, amount, order_data: _, timestamp } => {
+            Message::OrderReceived { purchase_id, product_id, buyer, buyer_chain_id, amount, order_data, timestamp } => {
                 // Seller's chain receives order notification with buyer's form data
-                // This is stored so seller can query order details
-                // Extract seller before emitting to avoid borrow conflict
-                let seller = self.runtime.authenticated_signer().unwrap_or(buyer);
-                self.runtime.emit("donations_events".into(), &DonationsEvent::OrderPlaced {
-                    purchase_id: purchase_id.clone(),
-                    product_id: product_id.clone(),
-                    buyer,
-                    seller,
-                    amount,
-                    timestamp,
-                });
-                
-                // Optionally store the full order details if we want to query them later
-                // For now we just emit the event
+                // We must fetch the product to get the correct seller (author) and to record the purchase
+                if let Ok(Some(product)) = self.state.get_product(&product_id).await {
+                    let seller = product.author; // Correct seller is the product author
+
+                    // Record the full purchase so it shows up in "My Orders"
+                    let purchase = donations::Purchase {
+                        id: purchase_id.clone(),
+                        product_id: product_id.clone(),
+                        buyer,
+                        buyer_chain_id: buyer_chain_id.to_string(),
+                        seller,
+                        seller_chain_id: product.author_chain_id.clone(),
+                        amount,
+                        timestamp,
+                        order_data: order_data.clone(),
+                        product: product.clone(),
+                    };
+                    
+                    let _ = self.state.record_purchase(purchase).await;
+
+                    self.runtime.emit("donations_events".into(), &DonationsEvent::OrderPlaced {
+                        purchase_id,
+                        product_id,
+                        buyer,
+                        seller,
+                        amount,
+                        timestamp,
+                    });
+                }
             }
         }
     }

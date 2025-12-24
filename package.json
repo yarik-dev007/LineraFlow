@@ -14,7 +14,8 @@
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/space-mono": "^5.2.9",
     "@google/genai": "^1.30.0",
-    "@linera/client": "^0.15.6",
+    "@linera/client": "^0.15.8",
+    "@linera/metamask": "^0.15.8",
     "@linera/signer": "^0.15.6",
     "axios": "^1.13.2",
     "ethers": "^6.15.0",
@@ -22,7 +23,10 @@
     "pocketbase": "^0.26.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.11.0"
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.11.0",
+    "remark-breaks": "^4.0.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.17",
