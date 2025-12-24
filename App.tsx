@@ -115,23 +115,32 @@ const AppContent: React.FC = () => {
     fetchData();
 
     // Single subscription setup - Log only, no automatic fetch
-    const unsubDonations = pb.collection('donations').subscribe('*', (e) => {
+    const safeSubscribe = async (col: string, filter: string, handler: (e: any) => void) => {
+      try {
+        return await pb.collection(col).subscribe(filter, handler);
+      } catch (e) {
+        console.warn(`Failed to subscribe to ${col}:`, e);
+        return () => Promise.resolve(); // Return no-op async unsub
+      }
+    };
+
+    const unsubDonationsPromise = safeSubscribe('donations', '*', (e) => {
       console.log('🔔 [REALTIME] Donation event:', e.action);
     });
 
-    const unsubProfiles = pb.collection('profiles').subscribe('*', (e) => {
+    const unsubProfilesPromise = safeSubscribe('profiles', '*', (e) => {
       console.log('🔔 [REALTIME] Profile event:', e.action);
     });
 
-    const unsubProducts = pb.collection('products').subscribe('*', (e) => {
+    const unsubProductsPromise = safeSubscribe('products', '*', (e) => {
       console.log('🔔 [REALTIME] Product event:', e.action);
       window.dispatchEvent(new CustomEvent('pb-refresh-products', { detail: { action: e.action, record: e.record } }));
     });
 
     return () => {
-      unsubDonations.then(fn => fn());
-      unsubProfiles.then(fn => fn());
-      unsubProducts.then(fn => fn());
+      unsubDonationsPromise.then(fn => fn && fn().catch(() => { }));
+      unsubProfilesPromise.then(fn => fn && fn().catch(() => { }));
+      unsubProductsPromise.then(fn => fn && fn().catch(() => { }));
     };
   }, [accountOwner]);
 

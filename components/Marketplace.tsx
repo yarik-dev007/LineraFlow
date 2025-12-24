@@ -8,6 +8,8 @@ import PrivateDataModal from './PrivateDataModal';
 import { Product, Purchase } from '../types';
 import { pb } from './pocketbase';
 import { useLinera } from './LineraProvider';
+import { cacheManager } from '../utils/cacheManager';
+import RegistrationAlert from './RegistrationAlert';
 
 interface MarketplaceProps {
     currentUserAddress?: string;
@@ -15,7 +17,7 @@ interface MarketplaceProps {
 
 const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const { ownerId } = useParams<{ ownerId: string }>();
-    const { application, accountOwner } = useLinera();
+    const { application, accountOwner, autoSignEnabled } = useLinera();
     const isMountedRef = useRef(true);
     const instanceId = useRef(Math.random().toString(36).substr(2, 5));
 
@@ -32,6 +34,8 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
     const [isLoading, setIsLoading] = useState(true);
+    const [hasProfile, setHasProfile] = useState<boolean | null>(null);
+    const [showRegistrationAlert, setShowRegistrationAlert] = useState(false);
 
     // Set initial filter based on URL
     useEffect(() => {
@@ -175,10 +179,22 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             return;
         }
 
-        try {
-            if (!silent) setIsLoading(true);
-            if (isMountedRef.current) setMyProducts([]);
+        const cacheKey = `marketplace_my_items_${accountOwner}`;
 
+        try {
+            // 1. Load from cache immediately (no spinner if cached)
+            const cached = cacheManager.get<Product[]>(cacheKey);
+            if (cached && cached.length > 0) {
+                console.log(`📦 [MyProducts] Loaded ${cached.length} items from cache`);
+                if (isMountedRef.current) {
+                    setMyProducts(cached);
+                    setIsLoading(false); // No spinner needed
+                }
+            } else {
+                if (!silent) setIsLoading(true);
+            }
+
+            // 2. Fetch fresh data in background
             const query = `
                 query {
                     productsByAuthorFull(owner: "${accountOwner}") {
@@ -195,23 +211,30 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 }
             `;
 
-            console.log('🔍 [MyProducts] Fetching with query:', query);
+            console.log('🔍 [MyProducts] Fetching fresh data...');
             const result: any = await application.query(JSON.stringify({ query }));
-            console.log('🔍 [MyProducts] Raw result:', result);
 
             let parsedResult = result;
             if (typeof result === 'string') parsedResult = JSON.parse(result);
 
             if (parsedResult.errors) {
                 console.error('❌ [MyProducts] GraphQL Errors:', parsedResult.errors);
+                return;
             }
 
             const fetchedProducts = parsedResult?.data?.productsByAuthorFull || [];
-            console.log(`✅ [MyProducts] Found ${fetchedProducts.length} items`);
             const products = fetchedProducts.map(productMapper);
-            const enriched = await enrichProductsWithMetadata(products, myProducts);
+            const enriched = await enrichProductsWithMetadata(products, cached || []);
 
-            if (isMountedRef.current) setMyProducts(enriched);
+            // 3. Update only if different from cache
+            const isDifferent = JSON.stringify(enriched) !== JSON.stringify(cached);
+            if (isDifferent || !cached) {
+                console.log(`✅ [MyProducts] Found ${enriched.length} items (${isDifferent ? 'updated' : 'same'})`);
+                if (isMountedRef.current) setMyProducts(enriched);
+                cacheManager.set(cacheKey, enriched);
+            } else {
+                console.log(`✅ [MyProducts] Data unchanged, using cache`);
+            }
         } catch (e) {
             console.error('Error fetching my products:', e);
         } finally {
@@ -225,10 +248,22 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             return;
         }
 
-        try {
-            if (!silent) setIsLoading(true);
-            if (isMountedRef.current) setPurchases([]);
+        const cacheKey = `marketplace_purchases_${accountOwner}`;
 
+        try {
+            // 1. Load from cache immediately
+            const cached = cacheManager.get<Product[]>(cacheKey);
+            if (cached && cached.length > 0) {
+                console.log(`📦 [Purchases] Loaded ${cached.length} items from cache`);
+                if (isMountedRef.current) {
+                    setPurchases(cached);
+                    setIsLoading(false);
+                }
+            } else {
+                if (!silent) setIsLoading(true);
+            }
+
+            // 2. Fetch fresh data in background
             const query = `
                 query {
                     myPurchases(owner: "${accountOwner}") {
@@ -252,22 +287,31 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 }
             `;
 
+            console.log('🛍️ [Purchases] Fetching fresh data...');
             const result: any = await application.query(JSON.stringify({ query }));
-            console.log('🛍️ [Purchases] Raw result:', result);
 
             let parsedResult = result;
             if (typeof result === 'string') parsedResult = JSON.parse(result);
 
+
             const fetchedPurchases = parsedResult?.data?.myPurchases || [];
             const products: Product[] = fetchedPurchases.map((pur: any) => {
                 const p = productMapper(pur.product);
-                p.successMessage = pur.product.successMessage; // Explicitly map
+                p.successMessage = pur.product.successMessage;
                 return p;
             });
             const uniqueProducts = Array.from(new Map(products.map(item => [item.id, item])).values());
             const enriched = await enrichProductsWithChainBlobs(uniqueProducts);
 
-            if (isMountedRef.current) setPurchases(enriched);
+            // 3. Update only if different from cache
+            const isDifferent = JSON.stringify(enriched) !== JSON.stringify(cached);
+            if (isDifferent || !cached) {
+                console.log(`✅ [Purchases] Found ${enriched.length} items (${isDifferent ? 'updated' : 'same'})`);
+                if (isMountedRef.current) setPurchases(enriched);
+                cacheManager.set(cacheKey, enriched);
+            } else {
+                console.log(`✅ [Purchases] Data unchanged, using cache`);
+            }
         } catch (e) {
             console.error('Error fetching purchases:', e);
         } finally {
@@ -357,6 +401,44 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
 
     // ... [existing useEffects] ...
 
+    // Handle create product button - check registration first
+    const handleCreateProduct = async () => {
+        // Check if user has profile
+        const hasReg = await checkProfile();
+        if (!hasReg) {
+            setShowRegistrationAlert(true);
+            return;
+        }
+        setIsCreateModalOpen(true);
+    };
+
+    // Check if user has profile
+    const checkProfile = async (): Promise<boolean> => {
+        if (!application || !accountOwner) return false;
+
+        try {
+            const query = `query { profile(owner: "${accountOwner}") { name } }`;
+            const result: any = await application.query(JSON.stringify({ query }));
+            let data = result;
+            if (typeof result === 'string') data = JSON.parse(result);
+
+            const profileData = data?.data?.profile || data?.profile;
+            const exists = !!(profileData && profileData.name);
+            setHasProfile(exists);
+            return exists;
+        } catch (error) {
+            setHasProfile(false);
+            return false;
+        }
+    };
+
+    // Check profile on mount and when accountOwner changes
+    useEffect(() => {
+        if (accountOwner && application) {
+            checkProfile();
+        }
+    }, [accountOwner, application]);
+
     const formatKv = (list: { key: string; value: string }[]) => {
         return list.map(item => `{ key: "${item.key}", value: "${item.value}" }`).join(', ');
     };
@@ -364,6 +446,13 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const performPurchase = async (product: Product, orderData: { key: string; value: string }[]) => {
         if (!application || !accountOwner) {
             alert('Please connect your wallet first.');
+            return;
+        }
+
+        // Check if user has profile
+        const hasReg = await checkProfile();
+        if (!hasReg) {
+            setShowRegistrationAlert(true);
             return;
         }
 
@@ -385,7 +474,8 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             `;
 
             console.log('💸 [Buying] Mutation:', mutation);
-            const result: any = await application.query(JSON.stringify({ query: mutation }));
+            // For user-initiated mutations, use MetaMask owner (not autosigner)
+            const result: any = await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
             console.log('💸 [Buying] Result:', result);
 
             let parsedResult = result;
@@ -396,7 +486,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 alert('Purchase failed: ' + parsedResult.errors[0].message);
             } else {
                 alert('✅ Purchase successful!');
-                if (activeTab === 'PURCHASES') fetchPurchases(true);
+                // Products will stay visible - no need to refresh
             }
         } catch (e) {
             console.error('Purchase error:', e);
@@ -411,9 +501,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         if (product.orderForm && product.orderForm.length > 0) {
             setBuyingProduct(product);
         } else {
-            if (confirm(`Buy "${product.name}" for ${product.price}?`)) {
-                performPurchase(product, []);
-            }
+            performPurchase(product, []);
         }
     };
 
@@ -425,12 +513,19 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
 
     const handleDelete = async (product: Product) => {
         if (!application || !accountOwner) return;
-        if (!confirm('Are you sure you want to delete this product?')) return;
+
+        // Check if user has profile
+        const hasReg = await checkProfile();
+        if (!hasReg) {
+            setShowRegistrationAlert(true);
+            return;
+        }
 
         try {
             setDeletingIds(prev => new Set(prev).add(product.id));
             const mutation = `mutation { deleteProduct(productId: "${product.id}") }`;
-            await application.query(JSON.stringify({ query: mutation }));
+            // For user-initiated mutations, use MetaMask owner
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
             if (activeTab === 'MY_ITEMS') fetchMyProducts(true);
         } catch (e) {
             console.error(e);
@@ -535,10 +630,23 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             {/* Header Controls */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 {ownerId ? (
-                    <div className="flex flex-col justify-center">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Store View</span>
-                        <div className="font-black text-xl md:text-2xl break-all uppercase border-b-4 border-linera-red inline-block pb-1">
-                            {ownerId.substring(0, 8)}...{ownerId.substring(ownerId.length - 6)}
+                    <div className="flex items-center gap-4">
+                        {/* Back Button */}
+                        <button
+                            onClick={() => window.location.href = '/marketplace'}
+                            className="p-3 bg-deep-black text-white hover:bg-linera-red transition-colors border-2 border-deep-black shadow-hard hover:shadow-hard-hover"
+                            title="Back to Marketplace"
+                        >
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                            </svg>
+                        </button>
+
+                        <div className="flex flex-col justify-center">
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Store View</span>
+                            <div className="font-black text-xl md:text-2xl break-all uppercase border-b-4 border-linera-red inline-block pb-1">
+                                {ownerId.substring(0, 8)}...{ownerId.substring(ownerId.length - 6)}
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -597,14 +705,25 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                         </button>
                     </div>
 
-                    {myItemsMode === 'PRODUCTS' && (
-                        <button
-                            onClick={() => setIsCreateModalOpen(true)}
-                            className="bg-linera-red text-white px-6 py-3 font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-none transition-all flex items-center gap-2 border-2 border-deep-black"
-                        >
-                            <Plus className="w-5 h-5" /> List New Item
-                        </button>
-                    )}
+                    <div className="flex items-center gap-4">
+                        {autoSignEnabled && (
+                            <div className="flex items-center gap-2 text-green-600 text-sm font-bold uppercase px-4 py-2 bg-green-100 border-2 border-deep-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                Auto-Sync Active
+                            </div>
+                        )}
+
+                        {myItemsMode === 'PRODUCTS' && (
+                            <button
+                                onClick={handleCreateProduct}
+                                className="bg-linera-red text-white px-6 py-3 font-bold uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:shadow-none transition-all flex items-center gap-2 border-2 border-deep-black"
+                            >
+                                <Plus className="w-5 h-5" /> List New Item
+                            </button>
+                        )}
+                    </div>
                 </div>
             )}
 
@@ -715,7 +834,18 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                     onClose={() => setViewingProduct(null)}
                 />
             )}
-        </div>
+
+            {/* Registration Alert Modal */}
+            {showRegistrationAlert && (
+                <RegistrationAlert
+                    onClose={() => setShowRegistrationAlert(false)}
+                    onInitialize={() => {
+                        setShowRegistrationAlert(false);
+                        window.location.href = '/profile';
+                    }}
+                />
+            )}
+        </div >
     );
 };
 

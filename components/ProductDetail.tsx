@@ -126,7 +126,8 @@ const ProductDetail: React.FC = () => {
                 }
             `;
 
-            await application.query(JSON.stringify({ query: mutation }));
+            // For user-initiated mutations, use MetaMask owner  
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
             setBuyingProduct(null);
 
             alert("Purchase submitted! Check 'Purchases' tab shortly.");

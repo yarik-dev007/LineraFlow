@@ -41,6 +41,23 @@ const DonationOverlay: React.FC<DonationOverlayProps> = ({ creator, onClose, onC
       return;
     }
 
+    // Check if user has profile before allowing donation
+    try {
+      const query = `query { profile(owner: "${accountOwner}") { name } }`;
+      const profileResult: any = await application.query(JSON.stringify({ query }));
+      let profileData = profileResult;
+      if (typeof profileResult === 'string') profileData = JSON.parse(profileResult);
+
+      const profile = profileData?.data?.profile || profileData?.profile;
+      if (!profile || !profile.name) {
+        alert('⚠️ Registration Required!\n\nPlease register your profile before making donations.\n\nGo to Profile Editor to complete registration.');
+        return;
+      }
+    } catch (error) {
+      alert('⚠️ Registration Required!\n\nPlease register your profile before making donations.\n\nGo to Profile Editor to complete registration.');
+      return;
+    }
+
     setIsSending(true);
 
     try {
@@ -73,8 +90,8 @@ const DonationOverlay: React.FC<DonationOverlayProps> = ({ creator, onClose, onC
 
       console.log('Mutation:', mutation);
 
-      // Execute the mutation - MetaMask should prompt for signature
-      const result = await application.query(JSON.stringify({ query: mutation }));
+      // Execute the mutation - For user-initiated mutations, use MetaMask owner
+      const result = await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
       console.log('Donation result:', result);
 
       // Call the parent's onConfirm to update UI

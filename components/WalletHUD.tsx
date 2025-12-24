@@ -32,7 +32,8 @@ const WalletHUD: React.FC<WalletHUDProps> = ({ onMint, onWithdraw, onClose, onCo
             const mutation = `mutation {
   mint(owner: "${accountOwner}", amount: "${topUpAmount}")
 }`;
-            await application.query(JSON.stringify({ query: mutation }));
+            // For user-initiated mutations, use MetaMask owner
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
             await queryBalance(); // Update balance
             setShowTopUpModal(false);
             setTopUpAmount('');
@@ -51,7 +52,8 @@ const WalletHUD: React.FC<WalletHUDProps> = ({ onMint, onWithdraw, onClose, onCo
             const mutation = `mutation {
   withdraw
 }`;
-            await application.query(JSON.stringify({ query: mutation }));
+            // For user-initiated mutations, use MetaMask owner
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
             await queryBalance(); // Update balance
         } catch (error: any) {
             alert(`❌ Error: ${error.message || 'Withdraw failed'}`);

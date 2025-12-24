@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
 import { generateCreativeBio } from '../services/geminiService';
 import { useLinera } from './LineraProvider';
+import { cacheManager } from '../utils/cacheManager';
 
 interface ProfileEditorProps {
     initialProfile: UserProfile;
@@ -25,7 +26,20 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
         const fetchProfile = async () => {
             if (!application || !accountOwner) return;
 
-            setIsLoading(true);
+            const cacheKey = `profile_${accountOwner}`;
+
+            // 1. Load from cache immediately
+            const cached = cacheManager.get<UserProfile>(cacheKey);
+            if (cached) {
+                console.log(`📦 [Profile] Loaded from cache`);
+                setProfile(cached);
+                setHasProfile(true);
+                setIsLoading(false);
+            } else {
+                setIsLoading(true);
+            }
+
+            // 2. Fetch fresh data in background
             try {
                 const query = `query {
   profile(owner: "${accountOwner}") {
@@ -37,6 +51,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
     }
   }
 }`;
+                console.log('👤 [Profile] Fetching fresh data...');
                 const result: any = await application.query(JSON.stringify({ query }));
                 let data = result;
                 if (typeof result === 'string') {
@@ -58,11 +73,19 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                         });
                     }
 
-                    setProfile({
+                    const freshProfile: UserProfile = {
                         displayName: profileData.name || '',
                         bio: profileData.bio || '',
                         socials: socialsMap
-                    });
+                    };
+
+                    // 3. Update only if different from cache
+                    const isDifferent = JSON.stringify(freshProfile) !== JSON.stringify(cached);
+                    if (isDifferent || !cached) {
+                        console.log(`✅ [Profile] ${isDifferent ? 'Updated' : 'Same'}`);
+                        setProfile(freshProfile);
+                        cacheManager.set(cacheKey, freshProfile);
+                    }
                 } else {
                     setHasProfile(false);
                 }
@@ -137,7 +160,8 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
 }`;
             }
 
-            await application.query(JSON.stringify({ query: mutation }));
+            // For user-initiated mutations, use MetaMask owner
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
 
             setHasProfile(true);
             onSave(profile);

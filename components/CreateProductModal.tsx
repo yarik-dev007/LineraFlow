@@ -257,7 +257,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                 `;
             }
 
-            await application.query(JSON.stringify({ query: mutation }));
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
 
             setUploadStatus(initialData ? '✅ Product Updated!' : '✅ Product Created!');
             onCreate({}); // Trigger refresh
