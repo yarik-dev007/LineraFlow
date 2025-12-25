@@ -51,12 +51,12 @@ impl Contract for DonationsContract {
                     self.runtime.prepare_message(message).with_authentication().send_to(target_account_norm.chain_id);
                     let ts = self.runtime.system_time().micros();
                     if let Ok(id) = self.state.record_donation(owner, target_account_norm.owner, amount, text_message.clone(), Some(current_chain_str.clone()), Some(target_account_norm.chain_id.to_string()), ts).await {
-                        self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: owner, to: target_account_norm.owner, amount, message: text_message, source_chain_id: Some(current_chain_str), timestamp: ts });
+                        self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: owner, to: target_account_norm.owner, amount, message: text_message, source_chain_id: Some(current_chain_str), to_chain_id: Some(target_account_norm.chain_id.to_string()), timestamp: ts });
                     }
                 } else {
                     let ts = self.runtime.system_time().micros();
                     if let Ok(id) = self.state.record_donation(owner, target_account_norm.owner, amount, text_message.clone(), None, Some(target_account_norm.chain_id.to_string()), ts).await {
-                        self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: owner, to: target_account_norm.owner, amount, message: text_message, source_chain_id: None, timestamp: ts });
+                        self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: owner, to: target_account_norm.owner, amount, message: text_message, source_chain_id: None, to_chain_id: Some(target_account_norm.chain_id.to_string()), timestamp: ts });
                     }
                 }
                 ResponseData::Ok
@@ -568,8 +568,9 @@ impl Contract for DonationsContract {
             Message::Notify => {}
             Message::TransferWithMessage { owner, amount, text_message, source_chain_id, source_owner } => {
                 let ts = self.runtime.system_time().micros();
-                if let Ok(id) = self.state.record_donation(source_owner, owner, amount, text_message.clone(), Some(source_chain_id.to_string()), Some(self.runtime.chain_id().to_string()), ts).await {
-                    self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: source_owner, to: owner, amount, message: text_message, source_chain_id: Some(source_chain_id.to_string()), timestamp: ts });
+                let current_chain_id = self.runtime.chain_id().to_string();
+                if let Ok(id) = self.state.record_donation(source_owner, owner, amount, text_message.clone(), Some(source_chain_id.to_string()), Some(current_chain_id.clone()), ts).await {
+                    self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: source_owner, to: owner, amount, message: text_message, source_chain_id: Some(source_chain_id.to_string()), to_chain_id: Some(current_chain_id), timestamp: ts });
                 }
             }
             Message::Register { source_chain_id, owner, name, bio, socials } => {
@@ -759,8 +760,8 @@ impl DonationsContract {
                     DonationsEvent::ProfileHeaderUpdated { owner, hash, timestamp: _ } => {
                         let _ = self.state.set_header(owner, hash).await;
                     }
-                    DonationsEvent::DonationSent { id: _, from, to, amount, message, source_chain_id, timestamp } => {
-                        let _ = self.state.record_donation(from, to, amount, message, source_chain_id, timestamp).await;
+                    DonationsEvent::DonationSent { id: _, from, to, amount, message, source_chain_id, to_chain_id, timestamp } => {
+                        let _ = self.state.record_donation(from, to, amount, message, source_chain_id, to_chain_id, timestamp).await;
                     }
                     DonationsEvent::ProductCreated { product, timestamp: _ } => {
                         let _ = self.state.create_product(product).await;

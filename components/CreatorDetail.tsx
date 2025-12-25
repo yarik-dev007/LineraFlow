@@ -16,19 +16,19 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
     // Filter and get last 3 donations for this creator in realtime
     const recentDonations = useMemo(() => {
         return allDonations
-            .filter((d: any) => d.to_owner === creator.contractAddress)
+            .filter((d: any) => d.to_owner === creator.contractAddress || (d.to_chain_id && d.to_chain_id === creator.chainId))
             .slice(0, 3);
-    }, [allDonations, creator.contractAddress]);
+    }, [allDonations, creator.contractAddress, creator.chainId]);
 
     // Calculate unique backers count
     const backersCount = useMemo(() => {
         const uniqueDonors = new Set(
             allDonations
-                .filter((d: any) => d.to_owner === creator.contractAddress)
+                .filter((d: any) => d.to_owner === creator.contractAddress || (d.to_chain_id && d.to_chain_id === creator.chainId))
                 .map((d: any) => d.from_owner)
         );
         return uniqueDonors.size;
-    }, [allDonations, creator.contractAddress]);
+    }, [allDonations, creator.contractAddress, creator.chainId]);
 
     return (
         <div className="w-full max-w-5xl mx-auto animate-slide-in pb-12">
@@ -140,7 +140,9 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
                                         <div className="flex items-center gap-2">
                                             <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                                             <span className="font-mono text-xs">
-                                                {donation.from_owner ? `${donation.from_owner.substring(0, 6)}...${donation.from_owner.substring(donation.from_owner.length - 4)}` : 'Anonymous'}
+                                                {donation.source_chain_id
+                                                    ? donation.source_chain_id.substring(0, 8) + '...'
+                                                    : (donation.from_owner ? `${donation.from_owner.substring(0, 6)}...` : 'Anonymous')}
                                             </span>
                                         </div>
                                         <span className="font-mono font-bold text-xs">+{donation.amount} LIN</span>

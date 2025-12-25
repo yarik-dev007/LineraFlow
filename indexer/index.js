@@ -138,6 +138,15 @@ async function syncDonations() {
                         to_chain_id: d.toChainId
                     });
                     console.log(`✅ Created donation: ${amount} from ${d.from} to ${d.to}`);
+                } else {
+                    const rec = existing.items[0];
+                    if (!rec.source_chain_id && d.sourceChainId || !rec.to_chain_id && d.toChainId) {
+                        await pb.collection('donations').update(rec.id, {
+                            source_chain_id: d.sourceChainId,
+                            to_chain_id: d.toChainId
+                        });
+                        console.log(`🔄 Updated donation chain info: ${rec.id}`);
+                    }
                 }
             } catch (e) {
                 console.error('❌ Error processing donation:', e.message);

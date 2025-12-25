@@ -324,8 +324,14 @@ impl QueryRoot {
                         let mut res = Vec::new();
                         for id in ids {
                             if let Ok(Some(r)) = state.donations.get(&id).await {
-                                let from_chain_id = r.source_chain_id.clone().unwrap_or_else(|| state.subscriptions.get(&r.from).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string()));
-                                let to_chain_id = r.to_chain_id.clone().unwrap_or_else(|| state.subscriptions.get(&r.to).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string()));
+                                let from_chain_id = match r.source_chain_id.clone() {
+                                    Some(id) => id,
+                                    None => state.subscriptions.get(&r.from).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string())
+                                };
+                                let to_chain_id = match r.to_chain_id.clone() {
+                                    Some(id) => id,
+                                    None => state.subscriptions.get(&r.to).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string())
+                                };
                                 res.push(DonationView { id: r.id, timestamp: r.timestamp, from_owner: r.from, from_chain_id, to_owner: r.to, to_chain_id, amount: r.amount, message: r.message });
                             }
                         }

@@ -191,7 +191,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
         try {
             // 1. Load from cache immediately
             const cached = cacheManager.get<Product[]>(cacheKey);
-            if (cached && cached.length > 0) {
+            if (cached) {
                 console.log(`📦 [Browse] Loaded ${cached.length} items from cache`);
                 if (isMountedRef.current) {
                     setProducts(cached);
@@ -349,7 +349,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
         try {
             // 1. Load from cache immediately (no spinner if cached)
             const cached = cacheManager.get<Product[]>(cacheKey);
-            if (cached && cached.length > 0) {
+            if (cached) {
                 console.log(`📦 [MyProducts] Loaded ${cached.length} items from cache`);
                 if (isMountedRef.current) {
                     setMyProducts(cached);
@@ -418,7 +418,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
         try {
             // 1. Load from cache immediately
             const cached = cacheManager.get<Product[]>(cacheKey);
-            if (cached && cached.length > 0) {
+            if (cached) {
                 console.log(`📦 [Purchases] Loaded ${cached.length} items from cache`);
                 if (isMountedRef.current) {
                     setPurchases(cached);

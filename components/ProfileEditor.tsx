@@ -289,7 +289,9 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2 mb-1">
                                                 <span className="font-bold text-sm">
-                                                    {donation.from_owner ? `${donation.from_owner.substring(0, 6)}...${donation.from_owner.substring(donation.from_owner.length - 4)}` : 'Anonymous'}
+                                                    {donation.source_chain_id
+                                                        ? `${donation.source_chain_id.substring(0, 8)}...`
+                                                        : (donation.from_owner ? `${donation.from_owner.substring(0, 6)}...` : 'Anonymous')}
                                                 </span>
                                                 <span className="text-[10px] text-gray-400 font-mono">
                                                     {(() => {

@@ -126,6 +126,13 @@ const AppContent: React.FC = () => {
 
     const unsubDonationsPromise = safeSubscribe('donations', '*', (e) => {
       console.log('🔔 [REALTIME] Donation event:', e.action);
+      if (e.action === 'create') {
+        setAllDonations(prev => [e.record, ...prev]);
+      } else if (e.action === 'update') {
+        setAllDonations(prev => prev.map(d => d.id === e.record.id ? e.record : d));
+      } else if (e.action === 'delete') {
+        setAllDonations(prev => prev.filter(d => d.id !== e.record.id));
+      }
     });
 
     const unsubProfilesPromise = safeSubscribe('profiles', '*', (e) => {

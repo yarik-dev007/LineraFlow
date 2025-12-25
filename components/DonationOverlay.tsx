@@ -126,6 +126,10 @@ const DonationOverlay: React.FC<DonationOverlayProps> = ({ creator, onClose, onC
             <span className="font-mono text-sm text-gray-500">TARGET ACCOUNT:</span>
             <span className="font-display text-xl">{creator.name}</span>
           </div>
+          <div className="flex justify-between items-center pb-4 border-b-2 border-gray-200">
+            <span className="font-mono text-sm text-gray-500">TARGET CHAIN:</span>
+            <span className="font-mono text-sm text-right break-all max-w-[70%]">{creator.chainId || creator.contractAddress?.substring(0, 8) + '...'}</span>
+          </div>
 
           {/* Amount Input */}
           <div className="space-y-2">

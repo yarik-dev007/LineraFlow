@@ -280,7 +280,7 @@ pub enum DonationsEvent {
     ProfileSocialUpdated { owner: AccountOwner, name: String, url: String, timestamp: u64 },
     ProfileAvatarUpdated { owner: AccountOwner, hash: String, timestamp: u64 },
     ProfileHeaderUpdated { owner: AccountOwner, hash: String, timestamp: u64 },
-    DonationSent { id: u64, from: AccountOwner, to: AccountOwner, amount: Amount, message: Option<String>, source_chain_id: Option<String>, timestamp: u64 },
+    DonationSent { id: u64, from: AccountOwner, to: AccountOwner, amount: Amount, message: Option<String>, source_chain_id: Option<String>, to_chain_id: Option<String>, timestamp: u64 },
     ProductCreated { product: Product, timestamp: u64 },
     ProductUpdated { product: Product, timestamp: u64 },
     ProductDeleted { product_id: String, author: AccountOwner, timestamp: u64 },
