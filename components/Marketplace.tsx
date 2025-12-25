@@ -13,10 +13,11 @@ import RegistrationAlert from './RegistrationAlert';
 import { useNavigate } from 'react-router-dom';
 
 interface MarketplaceProps {
+    chainId?: string;  // NEW: Chain-based filtering
     currentUserAddress?: string;
 }
 
-const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
+const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }) => {
     const { ownerId } = useParams<{ ownerId: string }>();
     const { application, accountOwner, autoSignEnabled, subscribeToMyItems, unsubscribeFromMyItems, subscribeToMyPurchases, unsubscribeFromMyPurchases, subscribeToMarketplace, unsubscribeFromMarketplace, subscribeToMyOrders, unsubscribeFromMyOrders } = useLinera();
     const navigate = useNavigate();
@@ -41,10 +42,10 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
 
     // Set initial filter based on URL
     useEffect(() => {
-        if (ownerId) {
+        if (chainId || ownerId) {
             setSearchQuery('');
         }
-    }, [ownerId]);
+    }, [chainId, ownerId]);
 
     useEffect(() => {
         isMountedRef.current = true;

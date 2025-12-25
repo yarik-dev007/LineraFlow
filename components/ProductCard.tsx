@@ -46,7 +46,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
 
     return (
         <div
-            onClick={() => navigate(`/owner/${product.author}/product/${product.id}`)}
+            onClick={() => navigate(`/chain/${product.chain_id || product.authorChainId}/product/${product.id}`)}
             className="bg-white border-2 border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all duration-200 flex flex-col h-full group cursor-pointer"
         >
             {/* ... rest of the file ... */}
@@ -97,7 +97,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                         <h3 className="font-display text-lg leading-tight mb-1 line-clamp-2">
                             {product.name}
                         </h3>
-                        <p className="text-xs font-mono text-gray-500 uppercase">By {product.author.substring(0, 8)}...</p>
+                        <p className="text-xs font-mono text-gray-500 uppercase">
+                            By {(product.chain_id || product.authorChainId || product.author).substring(0, 8)}...
+                        </p>
                     </div>
                 </div>
 

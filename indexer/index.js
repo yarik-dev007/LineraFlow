@@ -106,7 +106,7 @@ async function syncDonations() {
     console.log('Syncing donations...');
     const query = `query {
         allDonations {
-            id, from, to, amount, message, timestamp, sourceChainId
+            id, from, to, amount, message, timestamp, sourceChainId, toChainId
         }
     }`;
     try {
@@ -134,7 +134,8 @@ async function syncDonations() {
                         amount: amount,
                         message: d.message,
                         timestamp: d.timestamp,
-                        source_chain_id: d.sourceChainId
+                        source_chain_id: d.sourceChainId,
+                        to_chain_id: d.toChainId
                     });
                     console.log(`✅ Created donation: ${amount} from ${d.from} to ${d.to}`);
                 }
@@ -259,6 +260,72 @@ async function syncProducts() {
     }
 }
 
+async function syncSubscriptions() {
+    console.log('Syncing subscriptions...');
+    const query = `query {
+        allSubscriptionPrices {
+            author
+            price
+            description
+        }
+    }`;
+
+    try {
+        const result = await fetchGraphQL(query);
+        if (!result.data) {
+            console.error('❗ [Subscriptions] Skip sync: No data returned from chain');
+            return;
+        }
+        const subscriptions = result.data.allSubscriptionPrices || [];
+        console.log(`📊 [Subscriptions] Found ${subscriptions.length} subscription offers on chain`);
+
+        for (const sub of subscriptions) {
+            try {
+                const priceNum = parseFloat(sub.price || '0');
+
+                const existing = await pb.collection('author_subscriptions').getFirstListItem(
+                    `author="${sub.author}"`
+                ).catch(() => null);
+
+                if (existing) {
+                    await pb.collection('author_subscriptions').update(existing.id, {
+                        price: priceNum,
+                        description: sub.description,
+                        author_chain_id: LINERA_CHAIN_ID  // Use main chain for now
+                    });
+                    console.log(`✅ Updated subscription for ${sub.author}`);
+                } else {
+                    await pb.collection('author_subscriptions').create({
+                        author: sub.author,
+                        price: priceNum,
+                        description: sub.description,
+                        author_chain_id: LINERA_CHAIN_ID
+                    });
+                    console.log(`✅ Created subscription for ${sub.author}`);
+                }
+            } catch (e) {
+                console.error('❗ Error processing subscription:', e.message);
+            }
+        }
+
+        // Cleanup: Remove subscriptions that are no longer on chain
+        const pbSubs = await pb.collection('author_subscriptions').getFullList();
+        const chainAuthors = new Set(subscriptions.map(s => s.author));
+        for (const local of pbSubs) {
+            if (!chainAuthors.has(local.author)) {
+                console.log(`🗑️  [SYNC] Deleting removed subscription: ${local.author}`);
+                try {
+                    await pb.collection('author_subscriptions').delete(local.id);
+                } catch (err) {
+                    console.error(`❗ Failed to delete subscription ${local.id}:`, err.message);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('❗ Error syncing subscriptions:', e.message);
+    }
+}
+
 async function performSync() {
     if (isSyncing) {
         pendingSync = true;
@@ -272,6 +339,7 @@ async function performSync() {
         await syncProfiles();
         await syncDonations();
         await syncProducts();
+        await syncSubscriptions();
         console.log('✅ [LOCK] Sync complete');
     } catch (e) {
         console.error('❌ [LOCK] Sync failed:', e.message);

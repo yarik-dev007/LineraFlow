@@ -724,11 +724,26 @@
         "required": false,
         "system": false,
         "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_to_chain_don",
+        "max": 0,
+        "min": 0,
+        "name": "to_chain_id",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
       }
     ],
     "indexes": [
       "CREATE INDEX IF NOT EXISTS idx_donations_from ON donations(from_owner)",
-      "CREATE INDEX IF NOT EXISTS idx_donations_to ON donations(to_owner)"
+      "CREATE INDEX IF NOT EXISTS idx_donations_to ON donations(to_owner)",
+      "CREATE INDEX IF NOT EXISTS idx_donations_to_chain ON donations(to_chain_id)"
     ],
     "system": false
   },
@@ -951,6 +966,91 @@
     ],
     "indexes": [
       "CREATE INDEX IF NOT EXISTS idx_products_owner ON products(owner)"
+    ],
+    "system": false
+  },
+  {
+    "id": "pbc_author_subscriptions",
+    "listRule": "id != ''",
+    "viewRule": "id != ''",
+    "createRule": "id != ''",
+    "updateRule": "id != ''",
+    "deleteRule": "id != ''",
+    "name": "author_subscriptions",
+    "type": "base",
+    "fields": [
+      {
+        "autogeneratePattern": "[a-z0-9]{15}",
+        "hidden": false,
+        "id": "text_id_sub",
+        "max": 15,
+        "min": 15,
+        "name": "id",
+        "pattern": "^[a-z0-9]+$",
+        "presentable": false,
+        "primaryKey": true,
+        "required": true,
+        "system": true,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_author_sub",
+        "max": 0,
+        "min": 0,
+        "name": "author",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": true,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "hidden": false,
+        "id": "number_price_sub",
+        "max": null,
+        "min": 0,
+        "name": "price",
+        "onlyInt": false,
+        "presentable": false,
+        "required": true,
+        "system": false,
+        "type": "number"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_desc_sub",
+        "max": 0,
+        "min": 0,
+        "name": "description",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      },
+      {
+        "autogeneratePattern": "",
+        "hidden": false,
+        "id": "text_chain_sub",
+        "max": 0,
+        "min": 0,
+        "name": "author_chain_id",
+        "pattern": "",
+        "presentable": false,
+        "primaryKey": false,
+        "required": false,
+        "system": false,
+        "type": "text"
+      }
+    ],
+    "indexes": [
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_author_subscriptions_author ON author_subscriptions(author)",
+      "CREATE INDEX IF NOT EXISTS idx_author_subscriptions_chain ON author_subscriptions(author_chain_id)"
     ],
     "system": false
   }

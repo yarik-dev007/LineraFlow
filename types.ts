@@ -49,6 +49,7 @@ export interface Product {
   id: string;
   author: string;
   authorChainId: string;
+  chain_id?: string; // Alias for authorChainId (database compatibility)
   publicData: KeyValuePair[]; // Source of truth
   price: string;
   privateData?: KeyValuePair[];

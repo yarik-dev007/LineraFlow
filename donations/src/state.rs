@@ -16,6 +16,7 @@ pub struct DonationsState {
     // Marketplace state
     pub products: MapView<String, Product>,
     pub products_by_author: MapView<AccountOwner, Vec<String>>,
+    pub products_by_chain: MapView<String, Vec<String>>,  // NEW: Chain-based index
     pub purchases: MapView<String, Purchase>,
     pub purchases_by_buyer: MapView<AccountOwner, Vec<String>>,
     pub purchases_by_seller: MapView<AccountOwner, Vec<String>>,
@@ -23,17 +24,19 @@ pub struct DonationsState {
     pub subscription_prices: MapView<AccountOwner, SubscriptionInfo>,
     pub content_subscriptions: MapView<String, ContentSubscription>,
     pub subscriptions_by_author: MapView<AccountOwner, Vec<String>>,
+    pub subscriptions_by_chain: MapView<String, Vec<String>>,  // NEW: Chain-based index
     pub subscriptions_by_subscriber: MapView<AccountOwner, Vec<String>>,
     pub posts: MapView<String, Post>,
     pub posts_by_author: MapView<AccountOwner, Vec<String>>,
+    pub posts_by_chain: MapView<String, Vec<String>>,  // NEW: Chain-based index
 }
 
 #[allow(dead_code)]
 impl DonationsState {
-    pub async fn record_donation(&mut self, from: AccountOwner, to: AccountOwner, amount: Amount, message: Option<String>, source_chain_id: Option<String>, timestamp: u64) -> Result<u64, String> {
+    pub async fn record_donation(&mut self, from: AccountOwner, to: AccountOwner, amount: Amount, message: Option<String>, source_chain_id: Option<String>, to_chain_id: Option<String>, timestamp: u64) -> Result<u64, String> {
         let id = *self.donation_counter.get() + 1;
         self.donation_counter.set(id);
-        let rec = DonationRecord { id, timestamp, from: from.clone(), to: to.clone(), amount, message, source_chain_id };
+        let rec = DonationRecord { id, timestamp, from: from.clone(), to: to.clone(), amount, message, source_chain_id, to_chain_id };
         self.donations.insert(&id, rec).map_err(|e: ViewError| format!("{:?}", e))?;
         let mut r = self.donations_by_recipient.get(&to).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
         r.push(id);
@@ -148,17 +151,21 @@ impl DonationsState {
     pub async fn create_product(&mut self, product: Product) -> Result<(), String> {
         let product_id = product.id.clone();
         let author = product.author.clone();
+        let author_chain_id = product.author_chain_id.clone();  // Extract chain_id
         
-        // Validate before creating
-        Self::validate_custom_fields(&product.public_data)?;
-        Self::validate_custom_fields(&product.private_data)?;
+        // Validate order form
         Self::validate_order_form(&product.order_form)?;
         
         self.products.insert(&product_id, product).map_err(|e: ViewError| format!("{:?}", e))?;
-        
+        // Add to author index
         let mut author_products = self.products_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
-        author_products.push(product_id);
+        author_products.push(product_id.clone());
         self.products_by_author.insert(&author, author_products).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Add to chain index
+        let mut chain_products = self.products_by_chain.get(&author_chain_id).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        chain_products.push(product_id.clone());
+        self.products_by_chain.insert(&author_chain_id, chain_products).map_err(|e: ViewError| format!("{:?}", e))?;
         
         Ok(())
     }
@@ -191,17 +198,24 @@ impl DonationsState {
     }
 
     pub async fn delete_product(&mut self, product_id: &str, author: AccountOwner) -> Result<(), String> {
-        let product = self.products.get(&product_id.to_string()).await.map_err(|e: ViewError| format!("{:?}", e))?.ok_or("Product not found")?;
+        // Get product to extract chain_id before deletion
+        let product = self.products.get(product_id).await
+            .map_err(|e: ViewError| format!("{:?}", e))?
+            .ok_or("Product not found")?;
+        let chain_id = product.author_chain_id.clone();
         
-        if product.author != author {
-            return Err("Unauthorized: not product owner".to_string());
-        }
+        // Remove product
+        self.products.remove(product_id).map_err(|e: ViewError| format!("{:?}", e))?;
         
-        self.products.remove(&product_id.to_string()).map_err(|e: ViewError| format!("{:?}", e))?;
-        
+        // Remove from author index
         let mut author_products = self.products_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
         author_products.retain(|id| id != product_id);
         self.products_by_author.insert(&author, author_products).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Remove from chain index
+        let mut chain_products = self.products_by_chain.get(&chain_id).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        chain_products.retain(|id| id != product_id);
+        self.products_by_chain.insert(&chain_id, chain_products).map_err(|e: ViewError| format!("{:?}", e))?;
         
         Ok(())
     }
@@ -265,7 +279,7 @@ impl DonationsState {
     
     // Content subscription management
     pub async fn set_subscription_price(&mut self, author: AccountOwner, price: Amount, description: Option<String>) -> Result<(), String> {
-        let info = SubscriptionInfo { price, description };
+        let info = SubscriptionInfo { author, price, description };
         self.subscription_prices.insert(&author, info).map_err(|e: ViewError| format!("{:?}", e))
     }
     
@@ -280,16 +294,22 @@ impl DonationsState {
     pub async fn create_subscription(&mut self, subscription: ContentSubscription) -> Result<(), String> {
         let sub_id = subscription.id.clone();
         let author = subscription.author.clone();
+        let author_chain_id = subscription.author_chain_id.clone();
         let subscriber = subscription.subscriber.clone();
         
         self.content_subscriptions.insert(&sub_id, subscription).map_err(|e: ViewError| format!("{:?}", e))?;
         
-        // Index by author
+        // Add to author index
         let mut author_subs = self.subscriptions_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
         author_subs.push(sub_id.clone());
         self.subscriptions_by_author.insert(&author, author_subs).map_err(|e: ViewError| format!("{:?}", e))?;
         
-        // Index by subscriber
+        // Add to chain index
+        let mut chain_subs = self.subscriptions_by_chain.get(&author_chain_id).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        chain_subs.push(sub_id.clone());
+        self.subscriptions_by_chain.insert(&author_chain_id, chain_subs).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Add to subscriber index
         let mut subscriber_subs = self.subscriptions_by_subscriber.get(&subscriber).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
         subscriber_subs.push(sub_id);
         self.subscriptions_by_subscriber.insert(&subscriber, subscriber_subs).map_err(|e: ViewError| format!("{:?}", e))?;
@@ -331,12 +351,19 @@ impl DonationsState {
     pub async fn create_post(&mut self, post: Post) -> Result<(), String> {
         let post_id = post.id.clone();
         let author = post.author.clone();
+        let author_chain_id = post.author_chain_id.clone();
         
         self.posts.insert(&post_id, post).map_err(|e: ViewError| format!("{:?}", e))?;
         
+        // Add to author index
         let mut author_posts = self.posts_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
-        author_posts.push(post_id);
+        author_posts.push(post_id.clone());
         self.posts_by_author.insert(&author, author_posts).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Add to chain index
+        let mut chain_posts = self.posts_by_chain.get(&author_chain_id).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        chain_posts.push(post_id);
+        self.posts_by_chain.insert(&author_chain_id, chain_posts).map_err(|e: ViewError| format!("{:?}", e))?;
         
         Ok(())
     }

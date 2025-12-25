@@ -125,6 +125,7 @@ pub struct ProfileView {
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
 pub struct SubscriptionInfo {
+    pub author: AccountOwner,
     pub price: Amount,
     pub description: Option<String>,
 }
@@ -138,6 +139,7 @@ pub struct DonationRecord {
     pub amount: Amount,
     pub message: Option<String>,
     pub source_chain_id: Option<String>,
+    pub to_chain_id: Option<String>,
 }
 
 // Content subscription structure

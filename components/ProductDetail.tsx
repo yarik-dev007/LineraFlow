@@ -235,11 +235,13 @@ const ProductDetail: React.FC = () => {
                         <div className="flex flex-wrap items-center gap-4 mb-6 pb-6 border-b-2 border-gray-100">
                             <div className="flex items-center gap-2">
                                 <div className="w-6 h-6 rounded-full bg-linera-red flex items-center justify-center text-white font-bold text-[10px] border border-black">
-                                    {product.author.substring(0, 2)}
+                                    {product.authorChainId ? product.authorChainId.substring(0, 2) : product.author.substring(0, 2)}
                                 </div>
                                 <div className="flex flex-col">
                                     <span className="text-[10px] text-gray-400 font-bold uppercase">Created By</span>
-                                    <span className="text-xs font-bold font-mono text-linera-red">{product.author.substring(0, 8)}...</span>
+                                    <span className="text-xs font-bold font-mono text-linera-red">
+                                        {product.authorChainId ? product.authorChainId.substring(0, 8) : product.author.substring(0, 8)}...
+                                    </span>
                                 </div>
                             </div>
                         </div>

@@ -50,12 +50,12 @@ impl Contract for DonationsContract {
                     let message = Message::TransferWithMessage { owner: target_account_norm.owner, amount, text_message: text_message.clone(), source_chain_id: current_chain, source_owner: owner };
                     self.runtime.prepare_message(message).with_authentication().send_to(target_account_norm.chain_id);
                     let ts = self.runtime.system_time().micros();
-                    if let Ok(id) = self.state.record_donation(owner, target_account_norm.owner, amount, text_message.clone(), Some(current_chain_str.clone()), ts).await {
+                    if let Ok(id) = self.state.record_donation(owner, target_account_norm.owner, amount, text_message.clone(), Some(current_chain_str.clone()), Some(target_account_norm.chain_id.to_string()), ts).await {
                         self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: owner, to: target_account_norm.owner, amount, message: text_message, source_chain_id: Some(current_chain_str), timestamp: ts });
                     }
                 } else {
                     let ts = self.runtime.system_time().micros();
-                    if let Ok(id) = self.state.record_donation(owner, target_account_norm.owner, amount, text_message.clone(), None, ts).await {
+                    if let Ok(id) = self.state.record_donation(owner, target_account_norm.owner, amount, text_message.clone(), None, Some(target_account_norm.chain_id.to_string()), ts).await {
                         self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: owner, to: target_account_norm.owner, amount, message: text_message, source_chain_id: None, timestamp: ts });
                     }
                 }
@@ -568,7 +568,7 @@ impl Contract for DonationsContract {
             Message::Notify => {}
             Message::TransferWithMessage { owner, amount, text_message, source_chain_id, source_owner } => {
                 let ts = self.runtime.system_time().micros();
-                if let Ok(id) = self.state.record_donation(source_owner, owner, amount, text_message.clone(), Some(source_chain_id.to_string()), ts).await {
+                if let Ok(id) = self.state.record_donation(source_owner, owner, amount, text_message.clone(), Some(source_chain_id.to_string()), Some(self.runtime.chain_id().to_string()), ts).await {
                     self.runtime.emit("donations_events".into(), &DonationsEvent::DonationSent { id, from: source_owner, to: owner, amount, message: text_message, source_chain_id: Some(source_chain_id.to_string()), timestamp: ts });
                 }
             }

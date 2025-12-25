@@ -87,7 +87,7 @@ async function runTest() {
     const chains = loadChainData();
     log('Loaded chain data:', chains);
 
-    const APP_ID = process.env.DONATIONS_APP_ID || process.env.VITE_DONATIONS_APPLICATION_ID || '347f9208a712b76b421420d83df14196b1220380fbf14c9d47c171e95eecb093';
+    const APP_ID = process.env.DONATIONS_APP_ID || process.env.VITE_DONATIONS_APPLICATION_ID || '727c9af4ab3b99a0d348c672e0dd6da6af5783720da38c2b9c38f3a73cfd074b';
     log('Using Application ID:', APP_ID);
 
     // Construct GraphQL endpoints

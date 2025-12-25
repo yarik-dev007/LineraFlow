@@ -324,8 +324,8 @@ impl QueryRoot {
                         let mut res = Vec::new();
                         for id in ids {
                             if let Ok(Some(r)) = state.donations.get(&id).await {
-                                let from_chain_id = state.subscriptions.get(&r.from).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
-                                let to_chain_id = state.subscriptions.get(&r.to).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
+                                let from_chain_id = r.source_chain_id.clone().unwrap_or_else(|| state.subscriptions.get(&r.from).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string()));
+                                let to_chain_id = r.to_chain_id.clone().unwrap_or_else(|| state.subscriptions.get(&r.to).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string()));
                                 res.push(DonationView { id: r.id, timestamp: r.timestamp, from_owner: r.from, from_chain_id, to_owner: r.to, to_chain_id, amount: r.amount, message: r.message });
                             }
                         }
@@ -411,6 +411,27 @@ impl QueryRoot {
     }
 
     // Marketplace queries - NEW: Using flexible product structure
+    
+    /// Get list of all author subscription offers (for indexer)
+    async fn all_subscription_prices(&self) -> Vec<donations::SubscriptionInfo> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.subscription_prices.indices().await {
+                    Ok(authors) => {
+                        let mut results = Vec::new();
+                        for author in authors {
+                            if let Ok(Some(info)) = state.subscription_prices.get(&author).await {
+                                results.push(info);
+                            }
+                        }
+                        results
+                    },
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
     
     /// Get all products (public view only, no private data)
     async fn all_products(&self) -> Vec<ProductPublicView> {
@@ -623,6 +644,27 @@ impl QueryRoot {
         match DonationsState::load(self.storage_context.clone()).await {
             Ok(state) => state.get_subscription_price(author).await.ok().flatten(),
             Err(_) => None,
+        }
+    }
+    
+    /// Get products by chain_id (NEW: for chain-based routing)
+    async fn products_by_chain(&self, chain_id: String) -> Vec<Product> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.products_by_chain.get(&chain_id).await {
+                    Ok(Some(product_ids)) => {
+                        let mut products = Vec::new();
+                        for id in product_ids {
+                            if let Ok(Some(product)) = state.products.get(&id).await {
+                                products.push(product);
+                            }
+                        }
+                        products
+                    },
+                    _ => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
         }
     }
     

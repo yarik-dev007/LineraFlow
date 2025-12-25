@@ -241,7 +241,7 @@ const AppContent: React.FC = () => {
 
   // Decide current view for Sidebar based on path
   const currentView = location.pathname === '/profile' ? 'PROFILE'
-    : location.pathname.startsWith('/marketplace') || location.pathname.startsWith('/owner') ? 'MARKETPLACE'
+    : location.pathname.startsWith('/marketplace') || location.pathname.startsWith('/chain') ? 'MARKETPLACE'
       : 'EXPLORE';
 
   return (
@@ -301,8 +301,8 @@ const AppContent: React.FC = () => {
 
                 {/* Marketplace Routes */}
                 <Route path="/marketplace" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
-                <Route path="/owner/:ownerId" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
-                <Route path="/owner/:ownerId/product/:productId" element={<ProductDetail />} />
+                <Route path="/chain/:chainId" element={<Marketplace currentUserAddress={accountOwner || undefined} />} />
+                <Route path="/chain/:chainId/product/:productId" element={<ProductDetail />} />
 
               </Routes>
             </main>

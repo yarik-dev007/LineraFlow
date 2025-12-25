@@ -13,7 +13,7 @@ interface ProfileEditorProps {
 const MAIN_CHAIN_ID = import.meta.env.VITE_LINERA_MAIN_CHAIN_ID;
 
 const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, donations = [] }) => {
-    const { application, accountOwner, balances } = useLinera();
+    const { application, accountOwner, balances, chainId } = useLinera();
     const [mode, setMode] = useState<'VIEW' | 'EDIT'>('VIEW');
     const [profile, setProfile] = useState<UserProfile>(initialProfile);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -196,7 +196,10 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                 <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-8 gap-4">
                     <div>
                         <h1 className="font-display text-4xl md:text-5xl uppercase text-deep-black">My Identity</h1>
-                        <p className="font-mono text-sm text-gray-500 mt-2">ACCOUNT OWNER: {accountOwner ? `${accountOwner.substring(0, 8)}...SELF` : 'NOT_CONNECTED'}</p>
+                        <p className="font-mono text-sm text-gray-500 mt-2">
+                            ACCOUNT OWNER: {accountOwner ? accountOwner : 'NOT_CONNECTED'}
+                            {accountOwner && <span className="ml-4">CHAIN ID: {chainId ? chainId : 'UNK'}</span>}
+                        </p>
                     </div>
                     <button
                         onClick={() => setMode('EDIT')}

@@ -59,12 +59,12 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
                                 <h1 className="font-display text-3xl md:text-5xl uppercase text-deep-black leading-none break-all md:break-normal">{creator.name}</h1>
                                 <span className="self-start bg-linera-red text-white text-xs font-mono px-2 py-1 font-bold uppercase">{creator.category}</span>
                             </div>
-                            <p className="font-mono text-xs md:text-sm text-gray-500 break-all">{creator.contractAddress || '0x88a...Contract'}</p>
+                            <p className="font-mono text-xs md:text-sm text-gray-500 break-all">{creator.chainId || creator.contractAddress || '0x88a...Contract'}</p>
                         </div>
 
                         <div className="flex gap-4 w-full md:w-auto">
                             <button
-                                onClick={() => navigate(`/owner/${creator.contractAddress}`)}
+                                onClick={() => navigate(`/chain/${creator.chainId || creator.contractAddress}`)}
                                 className="flex-1 md:flex-none bg-white text-deep-black font-mono font-bold uppercase px-6 py-4 border-4 border-deep-black hover:bg-gray-100 transition-all flex items-center gap-2"
                             >
                                 <ShoppingBag className="w-5 h-5" />
