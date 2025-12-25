@@ -697,7 +697,7 @@ impl QueryRoot {
                         }
                         
                         // Sort by created_at descending (newest first)
-                        all_posts.sort_by(|a, b| b.createdAt.cmp(&a.createdAt));
+                        all_posts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
                         all_posts
                     },
                     _ => Vec::new(),
