@@ -4,6 +4,7 @@ import { generateCreativeBio } from '../services/geminiService';
 import { useLinera } from './LineraProvider';
 import { cacheManager } from '../utils/cacheManager';
 import { Image as ImageIcon, Check } from 'lucide-react';
+import { pb } from './pocketbase';
 
 interface ProfileEditorProps {
     initialProfile: UserProfile;
@@ -15,12 +16,16 @@ const MAIN_CHAIN_ID = import.meta.env.VITE_LINERA_MAIN_CHAIN_ID;
 
 const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, donations = [] }) => {
     const { application, accountOwner, balances, chainId } = useLinera();
-    const [mode, setMode] = useState<'VIEW' | 'EDIT'>('VIEW');
+    const [mode, setMode] = useState<'VIEW' | 'EDIT' | 'SUBSCRIPTION'>('VIEW');
     const [profile, setProfile] = useState<UserProfile>(initialProfile);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [hasProfile, setHasProfile] = useState(false);
+
+    // Subscription State
+    const [subscriptionPrice, setSubscriptionPrice] = useState('');
+    const [subscriptionDescription, setSubscriptionDescription] = useState('');
 
     // Image upload state
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -34,6 +39,18 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
     useEffect(() => {
         const fetchProfile = async () => {
             if (!application || !accountOwner) return;
+
+            // Fetch Subscription info from PB
+            try {
+                const sub = await pb.collection('author_subscriptions').getFirstListItem(`author="${accountOwner}"`);
+                if (sub) {
+                    setSubscriptionPrice(sub.price.toString());
+                    setSubscriptionDescription(sub.description);
+                }
+            } catch (e) {
+                // No subscription found
+            }
+
 
             const cacheKey = `profile_${accountOwner}`;
 
@@ -180,6 +197,28 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
         reader.readAsDataURL(file);
     };
 
+    const handleSaveSubscription = async () => {
+        if (!application || !accountOwner) {
+            alert("Wallet not connected!");
+            return;
+        }
+        setIsSaving(true);
+        try {
+            // Mutation for subscription only
+            const subMutation = `mutation {
+                setSubscriptionPrice(price: "${subscriptionPrice}", description: "${subscriptionDescription || ''}")
+             }`;
+            await application.query(JSON.stringify({ query: subMutation }), { owner: accountOwner });
+            alert("✅ Subscription updated!");
+            setMode('VIEW');
+        } catch (e: any) {
+            console.error("Failed to set subscription:", e);
+            alert(`❌ Error: ${e.message}`);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!application || !accountOwner) {
             alert("Wallet not connected!");
@@ -260,17 +299,23 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                 <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-8 gap-4">
                     <div>
                         <h1 className="font-display text-4xl md:text-5xl uppercase text-deep-black">My Identity</h1>
-                        <p className="font-mono text-sm text-gray-500 mt-2">
-                            ACCOUNT OWNER: {accountOwner ? accountOwner : 'NOT_CONNECTED'}
-                            {accountOwner && <span className="ml-4">CHAIN ID: {chainId ? chainId : 'UNK'}</span>}
-                        </p>
+
                     </div>
-                    <button
-                        onClick={() => setMode('EDIT')}
-                        className="bg-deep-black text-white font-mono uppercase px-6 py-2 hover:bg-linera-red transition-colors shadow-hard hover:shadow-hard-hover w-full md:w-auto"
-                    >
-                        [ Edit Profile ]
-                    </button>
+                    <div className="flex gap-4 w-full md:w-auto">
+                        {/* Manage Subscription Button */}
+                        <button
+                            onClick={() => setMode('SUBSCRIPTION')}
+                            className="bg-white text-deep-black border-4 border-deep-black font-mono font-bold uppercase px-6 py-2 hover:bg-gray-100 transition-colors shadow-hard hover:shadow-hard-hover flex-1 md:flex-none"
+                        >
+                            Manage Subscription
+                        </button>
+                        <button
+                            onClick={() => setMode('EDIT')}
+                            className="bg-deep-black text-white font-mono uppercase px-6 py-2 hover:bg-linera-red transition-colors shadow-hard hover:shadow-hard-hover flex-1 md:flex-none"
+                        >
+                            [ Edit Profile ]
+                        </button>
+                    </div>
                 </div>
 
                 <div className="bg-paper-white border-4 border-deep-black shadow-hard p-0 relative mb-8">
@@ -377,6 +422,68 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                             </div>
                         )}
                     </div>
+                </div>
+            </div>
+        );
+    }
+
+    // --- SUBSCRIPTION MODE ---
+    if (mode === 'SUBSCRIPTION') {
+        return (
+            <div className="w-full max-w-2xl bg-paper-white border-4 border-deep-black shadow-hard p-0 relative mx-0 md:mx-auto animate-slide-in mb-12">
+                <div className="border-b-4 border-deep-black p-4 md:p-6 bg-paper-white flex justify-between items-center">
+                    <div>
+                        <h1 className="font-display text-2xl md:text-3xl uppercase tracking-tighter text-deep-black">
+                            Subscription_Config
+                        </h1>
+                        <p className="font-mono text-xs mt-1 text-gray-500">MANAGE YOUR SUBSCRIBERS</p>
+                    </div>
+                    <button onClick={handleCancel} className="font-mono text-xs underline hover:text-linera-red">CANCEL</button>
+                </div>
+
+                <div className="p-4 md:p-6 space-y-6 md:space-y-8">
+                    <p className="font-mono text-sm text-gray-600">
+                        Set a monthly price for exclusive access to your content. Set price to 0 to disable subscriptions.
+                    </p>
+                    <div className="space-y-4">
+                        <fieldset className="relative border-2 border-deep-black p-4 pt-2 group focus-within:shadow-hard-sm transition-shadow">
+                            <legend className="font-mono text-xs font-bold px-2 bg-paper-white border-2 border-deep-black uppercase">
+                                Monthly Price (LIN)
+                            </legend>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={subscriptionPrice}
+                                onChange={(e) => setSubscriptionPrice(e.target.value)}
+                                className="w-full bg-transparent border-none outline-none font-mono font-bold text-xl placeholder-gray-300"
+                                placeholder="0.00"
+                            />
+                        </fieldset>
+                        <fieldset className="relative border-2 border-deep-black p-4 pt-2 group focus-within:shadow-hard-sm transition-shadow">
+                            <legend className="font-mono text-xs font-bold px-2 bg-paper-white border-2 border-deep-black uppercase">
+                                Plan Description
+                            </legend>
+                            <textarea
+                                value={subscriptionDescription}
+                                onChange={(e) => setSubscriptionDescription(e.target.value)}
+                                className="w-full bg-transparent border-none outline-none font-mono text-sm placeholder-gray-300 min-h-[100px] resize-none"
+                                placeholder="Describe what subscribers get (e.g. exclusive posts, direct messages)..."
+                            />
+                        </fieldset>
+                    </div>
+
+                    <button
+                        onClick={handleSaveSubscription}
+                        disabled={isSaving}
+                        className={`
+                        w-full py-4 bg-emerald-500 text-white font-display uppercase text-xl tracking-widest border-4 border-deep-black
+                        transition-all duration-100 hover:bg-emerald-600
+                        ${isSaving ? 'translate-y-1 translate-x-1 shadow-none' : 'hover:-translate-y-1 hover:-translate-x-1 shadow-hard hover:shadow-hard-hover'}
+                    `}
+                    >
+                        {isSaving ? 'Updating...' : 'Update Subscription'}
+                    </button>
                 </div>
             </div>
         );
@@ -603,12 +710,12 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                             </div>
                         </fieldset>
                     </div>
-                </div>
+                </div >
 
-            </div>
+            </div >
 
             {/* Footer Actions */}
-            <div className="p-4 md:p-6 pt-0 border-t-2 border-gray-100 mt-4">
+            < div className="p-4 md:p-6 pt-0 border-t-2 border-gray-100 mt-4" >
                 {uploadStatus && (
                     <div className="mb-4 text-center">
                         <span className="text-xs font-bold text-linera-red animate-pulse">{uploadStatus}</span>

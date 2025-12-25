@@ -4,6 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
 import { pb } from './pocketbase';
 
+import { useLinera } from './LineraProvider';
+import { useState, useEffect } from 'react';
+
 // Helper to get image URL
 const getImageUrl = (creator: Creator, filename?: string) => {
     if (!filename || !creator.collectionId || !creator.id) return null;
@@ -19,6 +22,54 @@ interface CreatorDetailProps {
 
 const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, onBack, onDonate }) => {
     const navigate = useNavigate();
+    const { application, accountOwner, chainId } = useLinera();
+    const [subscriptionOffer, setSubscriptionOffer] = useState<{ price: number, description: string } | null>(null);
+    const [isSubscribing, setIsSubscribing] = useState(false);
+
+    // Fetch subscription offer
+    useEffect(() => {
+        const fetchSub = async () => {
+            try {
+                // author field in author_subscriptions matches contractAddress (owner)
+                const sub = await pb.collection('author_subscriptions').getFirstListItem(`author="${creator.contractAddress}"`);
+                if (sub) {
+                    setSubscriptionOffer({ price: sub.price, description: sub.description });
+                }
+            } catch (e) {
+                // No subscription found
+            }
+        };
+        if (creator.contractAddress) fetchSub();
+    }, [creator.contractAddress]);
+
+    const handleSubscribe = async () => {
+        if (!application || !accountOwner) {
+            alert("Connect wallet to subscribe!");
+            return;
+        }
+        if (!subscriptionOffer) return;
+
+        setIsSubscribing(true);
+        try {
+            const mutation = `mutation {
+                subscribeToAuthor(
+                    owner: "${creator.contractAddress}",
+                    amount: "${subscriptionOffer.price}",
+                    target_account: {
+                        chain_id: "${creator.chainId || chainId}",
+                        owner: "${creator.contractAddress}"
+                    }
+                )
+            }`;
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
+            alert(`Successfully subscribed to ${creator.name}!`);
+        } catch (e: any) {
+            console.error(e);
+            alert(`Subscription failed: ${e.message}`);
+        } finally {
+            setIsSubscribing(false);
+        }
+    };
 
     // Filter and get last 3 donations for this creator in realtime
     const recentDonations = useMemo(() => {
@@ -64,28 +115,53 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
 
                 <div className="px-6 md:px-8 pb-8 relative">
                     {/* Avatar - Negative Margin to overlap */}
-                    <div className="absolute -top-12 md:-top-16 left-6 md:left-8 w-24 h-24 md:w-32 md:h-32 bg-white border-4 border-deep-black shadow-sm flex items-center justify-center overflow-hidden">
-                        {creator.avatar_file ? (
-                            <img
-                                src={getImageUrl(creator, creator.avatar_file) || ''}
-                                alt={creator.name}
-                                className="w-full h-full object-cover"
-                            />
-                        ) : (
-                            <span className="font-display text-2xl md:text-4xl text-deep-black">{creator.name.substring(0, 2).toUpperCase()}</span>
+                    {/* Avatar Column - Negative Margin to overlap */}
+                    <div className="absolute -top-12 md:-top-16 left-6 md:left-8 flex flex-col gap-3 w-24 md:w-32 z-10">
+                        <div className="w-24 h-24 md:w-32 md:h-32 bg-white border-4 border-deep-black shadow-sm flex items-center justify-center overflow-hidden shrink-0">
+                            {creator.avatar_file ? (
+                                <img
+                                    src={getImageUrl(creator, creator.avatar_file) || ''}
+                                    alt={creator.name}
+                                    className="w-full h-full object-cover"
+                                />
+                            ) : (
+                                <span className="font-display text-2xl md:text-4xl text-deep-black">{creator.name.substring(0, 2).toUpperCase()}</span>
+                            )}
+                        </div>
+
+                        {/* Compact Subscribe Button */}
+                        {subscriptionOffer && (
+                            <button
+                                onClick={handleSubscribe}
+                                disabled={isSubscribing}
+                                className="w-full bg-emerald-500 text-white font-mono font-bold uppercase text-xs md:text-sm py-3 border-4 border-deep-black shadow-hard hover:bg-emerald-600 hover:shadow-hard-hover transition-all flex items-center justify-center gap-1"
+                            >
+                                {isSubscribing ? (
+                                    <span className="animate-spin block w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                                ) : (
+                                    'SUBSCRIBE'
+                                )}
+                            </button>
                         )}
                     </div>
 
-                    <div className="pl-0 md:pl-40 pt-16 md:pt-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-4">
+                    <div className="pl-0 md:pl-40 pt-24 md:pt-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-4">
                         <div>
                             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-3 mb-1">
                                 <h1 className="font-display text-3xl md:text-5xl uppercase text-deep-black leading-none break-all md:break-normal">{creator.name}</h1>
                                 <span className="self-start bg-linera-red text-white text-xs font-mono px-2 py-1 font-bold uppercase">{creator.category}</span>
                             </div>
                             <p className="font-mono text-xs md:text-sm text-gray-500 break-all">{creator.chainId || creator.contractAddress || '0x88a...Contract'}</p>
+                            {subscriptionOffer && (
+                                <p className="font-mono text-xs text-green-600 font-bold mt-1">
+                                    SUBSCRIPTION AVAILABLE • {subscriptionOffer.price} LIN/mo
+                                </p>
+                            )}
                         </div>
 
                         <div className="flex gap-4 w-full md:w-auto">
+
+
                             <button
                                 onClick={() => navigate(`/chain/${creator.chainId || creator.contractAddress}`)}
                                 className="flex-1 md:flex-none bg-white text-deep-black font-mono font-bold uppercase px-6 py-4 border-4 border-deep-black hover:bg-gray-100 transition-all flex items-center gap-2"

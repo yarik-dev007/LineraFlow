@@ -93,6 +93,14 @@ export interface Purchase {
   product: Product;
 }
 
+export interface SubscriptionOffer {
+  id: string;
+  author: string;
+  price: string;
+  description: string;
+  authorChainId?: string;
+}
+
 export enum InteractionState {
   IDLE = 'IDLE',
   HOVER = 'HOVER',
