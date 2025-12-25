@@ -53,61 +53,135 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         };
     }, []);
 
+    // Refs to hold latest fetch functions for subscriptions
+    const fetchMyProductsRef = useRef(null as any);
+    const fetchPurchasesRef = useRef(null as any);
+    const fetchProductsRef = useRef(null as any);
+    const fetchMyOrdersRef = useRef(null as any);
+    const refreshPocketBaseMetadataRef = useRef(null as any);
+
     // Subscribe to My Items updates when on MY_ITEMS tab
     useEffect(() => {
         if (activeTab === 'MY_ITEMS' && myItemsMode === 'PRODUCTS') {
             subscribeToMyItems(() => {
                 console.log('🔔 [Marketplace] My Items notification received');
-                fetchMyProducts(true); // Silent refresh
+                fetchMyProductsRef.current?.(true); // Silent refresh from blockchain
+
+                // After blockchain sync, refresh PocketBase metadata
+                // Delay allows indexer time to sync new products
+                setTimeout(() => {
+                    refreshPocketBaseMetadataRef.current?.();
+                }, 100); // Small initial delay before the 2s PB refresh
             });
 
             return () => {
                 unsubscribeFromMyItems();
             };
         }
-    }, [activeTab, myItemsMode, subscribeToMyItems, unsubscribeFromMyItems]);
+    }, [activeTab, myItemsMode, subscribeToMyItems, unsubscribeFromMyItems]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Subscribe to Purchases updates when on PURCHASES tab
     useEffect(() => {
         if (activeTab === 'PURCHASES') {
             subscribeToMyPurchases(() => {
                 console.log('🔔 [Marketplace] Purchases notification received');
-                fetchPurchases(true); // Silent refresh
+                fetchPurchasesRef.current?.(true); // Silent refresh
             });
 
             return () => {
                 unsubscribeFromMyPurchases();
             };
         }
-    }, [activeTab, subscribeToMyPurchases, unsubscribeFromMyPurchases]);
+    }, [activeTab, subscribeToMyPurchases, unsubscribeFromMyPurchases]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Subscribe to Marketplace updates when on BROWSE tab
     useEffect(() => {
         if (activeTab === 'BROWSE') {
             subscribeToMarketplace(() => {
                 console.log('🔔 [Marketplace] Browse notification received');
-                fetchProducts(true); // Silent refresh
+                fetchProductsRef.current?.(true); // Silent refresh
             });
 
             return () => {
                 unsubscribeFromMarketplace();
             };
         }
-    }, [activeTab, subscribeToMarketplace, unsubscribeFromMarketplace]);
+    }, [activeTab, subscribeToMarketplace, unsubscribeFromMarketplace]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Subscribe to My Orders updates when on MY_ITEMS -> ORDERS mode
     useEffect(() => {
         if (activeTab === 'MY_ITEMS' && myItemsMode === 'ORDERS') {
             subscribeToMyOrders(() => {
                 console.log('🔔 [Marketplace] My Orders notification received');
-                fetchMyOrders(true); // Silent refresh
+                fetchMyOrdersRef.current?.(true); // Silent refresh
             });
 
             return () => {
                 unsubscribeFromMyOrders();
             };
         }
-    }, [activeTab, myItemsMode, subscribeToMyOrders, unsubscribeFromMyOrders]);
+    }, [activeTab, myItemsMode, subscribeToMyOrders, unsubscribeFromMyOrders]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // Helper function to refresh PocketBase metadata for current products
+    const refreshPocketBaseMetadata = async (delay = 5000, retry = true) => {
+        // Wait for indexer to sync
+        await new Promise(resolve => setTimeout(resolve, delay));
+
+        if (myProducts.length === 0) return;
+
+        const productIds = myProducts.map(p => p.id);
+        const filter = productIds.map(id => `product_id="${id}"`).join('||');
+
+        try {
+            console.log('🔄 [MyItems] Refreshing PocketBase metadata...');
+            const pbRecords = await pb.collection('products').getFullList({ filter });
+
+            let hasAnyChanges = false;
+
+            // Update products with new metadata
+            const updated = myProducts.map(p => {
+                const pbProduct = pbRecords.find(r => r.product_id === p.id);
+                if (!pbProduct) return p;
+
+                // Only update if metadata changed
+                const hasChanges =
+                    pbProduct.image_preview !== p.image_preview ||
+                    pbProduct.image !== p.image ||
+                    !p.pbId;
+
+                if (hasChanges) {
+                    hasAnyChanges = true;
+                    console.log(`✅ [MyItems] Updated metadata for ${p.name}`);
+                    return {
+                        ...p,
+                        pbId: pbProduct.id,
+                        collectionId: pbProduct.collectionId,
+                        image: pbProduct.image,
+                        image_preview: pbProduct.image_preview,
+                        image_preview_hash: pbProduct.image_preview_hash,
+                        data_blob_hash: pbProduct.file_hash,
+                    };
+                }
+                return p;
+            });
+
+            setMyProducts(updated);
+
+            // Update cache
+            const cacheKey = `marketplace_my_items_${accountOwner}`;
+            cacheManager.set(cacheKey, updated);
+
+            // If no changes detected and retry enabled, try again after 10s
+            if (!hasAnyChanges && retry) {
+                console.log('⏳ [MyItems] No changes detected, will retry in 10s...');
+                setTimeout(() => {
+                    refreshPocketBaseMetadata(0, false); // No delay, no further retry
+                }, 10000);
+            }
+        } catch (err) {
+            console.warn('⚠️ [MyItems] Failed to refresh PB metadata:', err);
+        }
+    };
 
     // Fetch Products from PocketBase (Browse Tab)
     const fetchProducts = async (silent = false) => {
@@ -178,6 +252,15 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
         }
     };
 
+    // Update refs whenever functions change
+    useEffect(() => {
+        fetchMyProductsRef.current = fetchMyProducts;
+        fetchPurchasesRef.current = fetchPurchases;
+        fetchProductsRef.current = fetchProducts;
+        fetchMyOrdersRef.current = fetchMyOrders;
+        refreshPocketBaseMetadataRef.current = refreshPocketBaseMetadata;
+    });
+
     const enrichProductsWithMetadata = async (onChainProducts: any[], previousEnriched: Product[] = []): Promise<Product[]> => {
         const productIds = Array.from(new Set(onChainProducts.map((p: any) => p.id)));
         let pbRecords: any[] = [];
@@ -199,9 +282,10 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
                 ...p, // Preserve existing flexible fields
                 pbId: pbProduct?.id || prev?.pbId,
                 collectionId: pbProduct?.collectionId || prev?.collectionId,
-                // Only overwrite if PB has data and logic requires it (usually chain data is STRONGER now)
-                // We mainly want PB for image paths if they exist
+                image: pbProduct?.image || prev?.image,
                 image_preview: pbProduct?.image_preview || prev?.image_preview,
+                image_preview_hash: pbProduct?.image_preview_hash || p.image_preview_hash,
+                data_blob_hash: pbProduct?.file_hash || p.data_blob_hash,
             };
         });
     };
