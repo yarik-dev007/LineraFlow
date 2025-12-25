@@ -87,7 +87,7 @@ async function runTest() {
     const chains = loadChainData();
     log('Loaded chain data:', chains);
 
-    const APP_ID = process.env.DONATIONS_APP_ID || process.env.VITE_DONATIONS_APPLICATION_ID || '9aa9b46dc8d411efd9dba29e2d528c5f0772013092b8cfce674f0f516c6bb076';
+    const APP_ID = process.env.DONATIONS_APP_ID || process.env.VITE_DONATIONS_APPLICATION_ID || '347f9208a712b76b421420d83df14196b1220380fbf14c9d47c171e95eecb093';
     log('Using Application ID:', APP_ID);
 
     // Construct GraphQL endpoints
@@ -283,6 +283,9 @@ async function runTest() {
 
     const createPostResult = await graphql(authorEndpoint, createPostMutation);
     log('✓ Post created:', createPostResult.createPost);
+
+    log('Waiting 3 seconds for cross-chain post delivery...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
     log('');
 
     // Step 8: Verify subscriber received the post
@@ -327,6 +330,9 @@ async function runTest() {
 
     const updatePostResult = await graphql(authorEndpoint, updatePostMutation);
     log('✓ Post updated:', updatePostResult.updatePost);
+
+    log('Waiting 3 seconds for cross-chain update delivery...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
     log('');
 
     // Step 10: Verify subscriber received the update
@@ -352,6 +358,9 @@ async function runTest() {
 
     const deletePostResult = await graphql(authorEndpoint, deletePostMutation);
     log('✓ Post deleted:', deletePostResult.deletePost);
+
+    log('Waiting 3 seconds for cross-chain deletion sync...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
     log('');
 
     // Step 12: Verify post was deleted from subscriber's feed
@@ -408,6 +417,9 @@ async function runTest() {
 
     const createPost2Result = await graphql(authorEndpoint, createPost2Mutation);
     log('✓ Second post created:', createPost2Result.createPost);
+
+    log('Waiting 3 seconds for subscription check and delivery...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
     log('');
 
     // Step 15: Verify subscriber DID NOT receive the new post
@@ -470,7 +482,7 @@ async function runTest() {
     log('STEP 18: Testing subscription deletion');
     const deletePriceMutation = `
     mutation {
-      deleteSubscriptionPrice()
+      deleteSubscriptionPrice
     }
   `;
 

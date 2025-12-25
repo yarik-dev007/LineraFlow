@@ -394,7 +394,7 @@ impl Contract for DonationsContract {
                     price: amount,
                 };
                 
-                self.state.create_subscription(subscription).await.expect("Failed to create subscription");
+                self.state.create_subscription(subscription.clone()).await.expect("Failed to create subscription");
                 
                 // Notify author's chain about subscription payment
                 if author_chain_id != subscriber_chain_id {
