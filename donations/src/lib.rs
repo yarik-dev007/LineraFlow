@@ -57,6 +57,25 @@ pub enum Message {
         order_data: OrderResponses,
         timestamp: u64,
     },
+    // Content subscription messages
+    SubscriptionPayment {
+        subscriber: AccountOwner,
+        subscriber_chain_id: String,
+        author: AccountOwner,
+        amount: Amount,
+        duration_micros: u64,
+        timestamp: u64,
+    },
+    PostPublished {
+        post: Post,
+    },
+    PostUpdated {
+        post: Post,
+    },
+    PostDeleted {
+        post_id: String,
+        author: AccountOwner,
+    },
 }
 
 #[derive(Debug, Deserialize, Serialize, InputObject)]
@@ -89,6 +108,8 @@ pub struct Profile {
     pub name: String,
     pub bio: String,
     pub socials: Vec<SocialLink>,
+    pub avatar_hash: Option<String>,
+    pub header_hash: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
@@ -98,6 +119,14 @@ pub struct ProfileView {
     pub name: String,
     pub bio: String,
     pub socials: Vec<SocialLink>,
+    pub avatar_hash: Option<String>,
+    pub header_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct SubscriptionInfo {
+    pub price: Amount,
+    pub description: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
@@ -109,6 +138,31 @@ pub struct DonationRecord {
     pub amount: Amount,
     pub message: Option<String>,
     pub source_chain_id: Option<String>,
+}
+
+// Content subscription structure
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct ContentSubscription {
+    pub id: String,
+    pub subscriber: AccountOwner,
+    pub subscriber_chain_id: String,
+    pub author: AccountOwner,
+    pub author_chain_id: String,
+    pub start_timestamp: u64,
+    pub end_timestamp: u64,
+    pub price: Amount,
+}
+
+// Post structure
+#[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
+pub struct Post {
+    pub id: String,
+    pub author: AccountOwner,
+    pub author_chain_id: String,
+    pub title: String,
+    pub content: String,
+    pub image_hash: Option<String>,
+    pub created_at: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, SimpleObject)]
@@ -222,6 +276,8 @@ pub enum DonationsEvent {
     ProfileNameUpdated { owner: AccountOwner, name: String, timestamp: u64 },
     ProfileBioUpdated { owner: AccountOwner, bio: String, timestamp: u64 },
     ProfileSocialUpdated { owner: AccountOwner, name: String, url: String, timestamp: u64 },
+    ProfileAvatarUpdated { owner: AccountOwner, hash: String, timestamp: u64 },
+    ProfileHeaderUpdated { owner: AccountOwner, hash: String, timestamp: u64 },
     DonationSent { id: u64, from: AccountOwner, to: AccountOwner, amount: Amount, message: Option<String>, source_chain_id: Option<String>, timestamp: u64 },
     ProductCreated { product: Product, timestamp: u64 },
     ProductUpdated { product: Product, timestamp: u64 },
@@ -229,6 +285,14 @@ pub enum DonationsEvent {
     ProductPurchased { purchase_id: String, product_id: String, buyer: AccountOwner, seller: AccountOwner, amount: Amount, timestamp: u64 },
     // NEW: Order placed event
     OrderPlaced { purchase_id: String, product_id: String, buyer: AccountOwner, seller: AccountOwner, amount: Amount, timestamp: u64 },
+    // Content subscription events
+    SubscriptionPriceSet { author: AccountOwner, price: Amount, description: Option<String>, timestamp: u64 },
+    SubscriptionPriceDeleted { author: AccountOwner, timestamp: u64 },
+    UserSubscribed { subscription_id: String, subscriber: AccountOwner, author: AccountOwner, price: Amount, end_timestamp: u64, timestamp: u64 },
+    UserUnsubscribed { subscription_id: String, subscriber: AccountOwner, author: AccountOwner, timestamp: u64 },
+    PostCreated { post: Post, timestamp: u64 },
+    PostUpdated { post: Post, timestamp: u64 },
+    PostDeleted { post_id: String, author: AccountOwner, timestamp: u64 },
 }
 
 pub struct DonationsAbi;
@@ -255,6 +319,8 @@ pub enum Operation {
     Mint { owner: AccountOwner, amount: Amount },
     UpdateProfile { name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput> },
     Register { main_chain_id: ChainId, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput> },
+    SetAvatar { hash: String },
+    SetHeader { hash: String },
     GetProfile { owner: AccountOwner },
     GetDonationsByRecipient { owner: AccountOwner },
     GetDonationsByDonor { owner: AccountOwner },
@@ -293,6 +359,37 @@ pub enum Operation {
     
     ReadDataBlob {
         hash: String,
+    },
+    
+    // Content subscription operations    
+    SetSubscriptionPrice {
+        price: Amount,
+        description: Option<String>,
+    },
+    
+    DeleteSubscriptionPrice,
+    
+    SubscribeToAuthor {
+        owner: AccountOwner,
+        amount: Amount,
+        target_account: linera_sdk::abis::fungible::Account,
+    },
+    
+    CreatePost {
+        title: String,
+        content: String,
+        image_hash: Option<String>,
+    },
+    
+    UpdatePost {
+        post_id: String,
+        title: Option<String>,
+        content: Option<String>,
+        image_hash: Option<String>,
+    },
+    
+    DeletePost {
+        post_id: String,
     },
 }
 

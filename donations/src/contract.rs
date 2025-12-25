@@ -123,6 +123,20 @@ impl Contract for DonationsContract {
                 }
                 ResponseData::Ok
             }
+            Operation::SetAvatar { hash } => {
+                let owner = self.runtime.authenticated_signer().unwrap();
+                let ts = self.runtime.system_time().micros();
+                let _ = self.state.set_avatar(owner, hash.clone()).await;
+                self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileAvatarUpdated { owner, hash, timestamp: ts });
+                ResponseData::Ok
+            }
+            Operation::SetHeader { hash } => {
+                let owner = self.runtime.authenticated_signer().unwrap();
+                let ts = self.runtime.system_time().micros();
+                let _ = self.state.set_header(owner, hash.clone()).await;
+                self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileHeaderUpdated { owner, hash, timestamp: ts });
+                ResponseData::Ok
+            }
             Operation::GetProfile { owner } => {
                 match self.state.get_profile(owner).await { Ok(p) => ResponseData::Profile(p), Err(_) => ResponseData::Profile(None) }
             }
@@ -322,6 +336,230 @@ impl Contract for DonationsContract {
                 }
                 ResponseData::Ok
             }
+            
+            // Content subscription operations
+            Operation::SetSubscriptionPrice { price, description } => {
+                let owner = self.runtime.authenticated_signer().unwrap();
+                self.state.set_subscription_price(owner, price, description.clone()).await.expect("Failed to set subscription price");
+                
+                let ts = self.runtime.system_time().micros();
+                self.runtime.emit("donations_events".into(), &DonationsEvent::SubscriptionPriceSet { 
+                    author: owner, 
+                    price,
+                    description,
+                    timestamp: ts 
+                });
+                
+                ResponseData::Ok
+            }
+            
+            Operation::DeleteSubscriptionPrice => {
+                let owner = self.runtime.authenticated_signer().unwrap();
+                self.state.delete_subscription_info(owner).await.expect("Failed to delete subscription info");
+                
+                let ts = self.runtime.system_time().micros();
+                self.runtime.emit("donations_events".into(), &DonationsEvent::SubscriptionPriceDeleted {
+                    author: owner,
+                    timestamp: ts,
+                });
+                
+                ResponseData::Ok
+            }
+            
+            Operation::SubscribeToAuthor { owner, amount, target_account } => {
+                let subscriber = self.runtime.authenticated_signer().unwrap();
+                let ts = self.runtime.system_time().micros();
+                
+                // Transfer payment to author
+                let target_account_norm = self.normalize_account(target_account);
+                let author = target_account_norm.owner;
+                let author_chain_id = target_account_norm.chain_id;
+                self.runtime.transfer(owner, target_account_norm, amount);
+                
+                // Subscription duration (5 minutes for testing)
+                const FIVE_MINUTES_MICROS: u64 = 5 * 60 * 1_000_000;
+                let end_timestamp = ts + FIVE_MINUTES_MICROS;
+                let subscriber_chain_id = self.runtime.chain_id();
+                let sub_id = format!("sub-{}-{}-{}", subscriber, author, ts);
+                
+                // Create local subscription (for mySubscriptions query)
+                let subscription = donations::ContentSubscription {
+                    id: sub_id.clone(),
+                    subscriber,
+                    subscriber_chain_id: subscriber_chain_id.to_string(),
+                    author,
+                    author_chain_id: author_chain_id.to_string(),
+                    start_timestamp: ts,
+                    end_timestamp,
+                    price: amount,
+                };
+                
+                self.state.create_subscription(subscription).await.expect("Failed to create subscription");
+                
+                // Notify author's chain about subscription payment
+                if author_chain_id != subscriber_chain_id {
+                    self.runtime.prepare_message(Message::SubscriptionPayment {
+                        subscriber,
+                        subscriber_chain_id: subscriber_chain_id.to_string(),
+                        author,
+                        amount,
+                        duration_micros: FIVE_MINUTES_MICROS,
+                        timestamp: ts,
+                    }).with_authentication().send_to(author_chain_id);
+                }
+                
+                ResponseData::Ok
+            }
+            
+            Operation::CreatePost { title, content, image_hash } => {
+                let author = self.runtime.authenticated_signer().unwrap();
+                let ts = self.runtime.system_time().micros();
+                // Generate 12-character hex ID from timestamp
+                let post_id = format!("{:012x}", ts % 0x1000000000000);
+                let author_chain_id = self.runtime.chain_id();
+                
+                let post = donations::Post {
+                    id: post_id.clone(),
+                    author,
+                    author_chain_id: author_chain_id.to_string(),
+                    title,
+                    content,
+                    image_hash,
+                    created_at: ts,
+                };
+                
+                // Save post
+                self.state.create_post(post.clone()).await.expect("Failed to create post");
+                
+                // Emit event
+                self.runtime.emit("donations_events".into(), &DonationsEvent::PostCreated { 
+                    post: post.clone(), 
+                    timestamp: ts 
+                });
+                
+                // Get active subscriptions and clean up expired ones
+                let all_subs = self.state.subscriptions_by_author.get(&author).await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                
+                for sub_id in all_subs {
+                    if let Ok(Some(sub)) = self.state.content_subscriptions.get(&sub_id).await {
+                        if sub.end_timestamp < ts {
+                            // Subscription expired - unsubscribe
+                            let _ = self.state.remove_subscription(&sub_id, author, sub.subscriber).await;
+                            
+                            self.runtime.emit("donations_events".into(), &DonationsEvent::UserUnsubscribed {
+                                subscription_id: sub_id,
+                                subscriber: sub.subscriber,
+                                author,
+                                timestamp: ts,
+                            });
+                        } else {
+                            // Subscription active - send post to subscriber's chain
+                            if let Ok(subscriber_chain_id) = sub.subscriber_chain_id.parse() {
+                                if subscriber_chain_id != author_chain_id {
+                                    self.runtime.prepare_message(Message::PostPublished {
+                                        post: post.clone(),
+                                    }).with_authentication().send_to(subscriber_chain_id);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
+            
+            Operation::UpdatePost { post_id, title, content, image_hash } => {
+                let author = self.runtime.authenticated_signer().unwrap();
+                let ts = self.runtime.system_time().micros();
+                
+                // Update post
+                self.state.update_post(&post_id, title, content, image_hash).await
+                    .expect("Failed to update post");
+                
+                // Get updated post
+                let post = self.state.get_post(&post_id).await
+                    .expect("Failed to get post")
+                    .expect("Post not found");
+                
+                // Verify ownership
+                if post.author != author {
+                    panic!("Unauthorized: not post author");
+                }
+                
+                // Emit event
+                self.runtime.emit("donations_events".into(), &DonationsEvent::PostUpdated {
+                    post: post.clone(),
+                    timestamp: ts,
+                });
+                
+                // Send update to active subscribers
+                let all_subs = self.state.subscriptions_by_author.get(&author).await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                
+                let author_chain_id = self.runtime.chain_id();
+                for sub_id in all_subs {
+                    if let Ok(Some(sub)) = self.state.content_subscriptions.get(&sub_id).await {
+                        if sub.end_timestamp >= ts {
+                            // Active subscription - send update
+                            if let Ok(subscriber_chain_id) = sub.subscriber_chain_id.parse() {
+                                if subscriber_chain_id != author_chain_id {
+                                    self.runtime.prepare_message(Message::PostUpdated {
+                                        post: post.clone(),
+                                    }).with_authentication().send_to(subscriber_chain_id);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
+            
+            Operation::DeletePost { post_id } => {
+                let author = self.runtime.authenticated_signer().unwrap();
+                let ts = self.runtime.system_time().micros();
+                
+                // Delete post (will verify ownership inside)
+                self.state.delete_post(&post_id, author).await
+                    .expect("Failed to delete post");
+                
+                // Emit event
+                self.runtime.emit("donations_events".into(), &DonationsEvent::PostDeleted {
+                    post_id: post_id.clone(),
+                    author,
+                    timestamp: ts,
+                });
+                
+                // Send deletion to active subscribers
+                let all_subs = self.state.subscriptions_by_author.get(&author).await
+                    .ok()
+                    .flatten()
+                    .unwrap_or_default();
+                
+                let author_chain_id = self.runtime.chain_id();
+                for sub_id in all_subs {
+                    if let Ok(Some(sub)) = self.state.content_subscriptions.get(&sub_id).await {
+                        if sub.end_timestamp >= ts {
+                            // Active subscription - send deletion
+                            if let Ok(subscriber_chain_id) = sub.subscriber_chain_id.parse() {
+                                if subscriber_chain_id != author_chain_id {
+                                    self.runtime.prepare_message(Message::PostDeleted {
+                                        post_id: post_id.clone(),
+                                        author,
+                                    }).with_authentication().send_to(subscriber_chain_id);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                ResponseData::Ok
+            }
         }
     }
 
@@ -448,6 +686,48 @@ impl Contract for DonationsContract {
                     });
                 }
             }
+            Message::SubscriptionPayment { subscriber, subscriber_chain_id, author, amount, duration_micros, timestamp } => {
+                // Author's chain receives subscription payment
+                let author_chain_id = self.runtime.chain_id();
+                
+                let end_timestamp = timestamp + duration_micros;
+                let sub_id = format!("sub-{}-{}-{}", subscriber, author, timestamp);
+                
+                let subscription = donations::ContentSubscription {
+                    id: sub_id.clone(),
+                    subscriber,
+                    subscriber_chain_id,
+                    author,
+                    author_chain_id: author_chain_id.to_string(),
+                    start_timestamp: timestamp,
+                    end_timestamp,
+                    price: amount,
+                };
+                
+                let _ = self.state.create_subscription(subscription).await;
+                
+                // Emit event for indexing
+                self.runtime.emit("donations_events".into(), &DonationsEvent::UserSubscribed {
+                    subscription_id: sub_id,
+                    subscriber,
+                    author,
+                    price: amount,
+                    end_timestamp,
+                    timestamp,
+                });
+            }
+            Message::PostPublished { post } => {
+                // Subscriber's chain receives the post
+                let _ = self.state.create_post(post).await;
+            }
+            Message::PostUpdated { post } => {
+                // Subscriber's chain updates the post
+                let _ = self.state.update_post(&post.id, Some(post.title), Some(post.content), post.image_hash).await;
+            }
+            Message::PostDeleted { post_id, author } => {
+                // Subscriber's chain deletes the post
+                let _ = self.state.delete_post(&post_id, author).await;
+            }
         }
     }
 
@@ -472,6 +752,12 @@ impl DonationsContract {
                     }
                     DonationsEvent::ProfileSocialUpdated { owner, name, url, timestamp: _ } => {
                         let _ = self.state.set_social(owner, name, url).await;
+                    }
+                    DonationsEvent::ProfileAvatarUpdated { owner, hash, timestamp: _ } => {
+                        let _ = self.state.set_avatar(owner, hash).await;
+                    }
+                    DonationsEvent::ProfileHeaderUpdated { owner, hash, timestamp: _ } => {
+                        let _ = self.state.set_header(owner, hash).await;
                     }
                     DonationsEvent::DonationSent { id: _, from, to, amount, message, source_chain_id, timestamp } => {
                         let _ = self.state.record_donation(from, to, amount, message, source_chain_id, timestamp).await;
@@ -508,6 +794,28 @@ impl DonationsContract {
                     }
                     DonationsEvent::ProductDeleted { product_id, author, timestamp: _ } => {
                         let _ = self.state.delete_product(&product_id, author).await;
+                    }
+                    // Content subscription events
+                    DonationsEvent::SubscriptionPriceSet { author, price, description, timestamp: _ } => {
+                        let _ = self.state.set_subscription_price(author, price, description).await;
+                    }
+                    DonationsEvent::SubscriptionPriceDeleted { author, timestamp: _ } => {
+                        let _ = self.state.delete_subscription_info(author).await;
+                    }
+                    DonationsEvent::UserSubscribed { subscription_id: _, subscriber: _, author: _, price: _, end_timestamp: _, timestamp: _ } => {
+                        // Subscription is already created on the chain where payment was made
+                    }
+                    DonationsEvent::UserUnsubscribed { subscription_id, subscriber, author, timestamp: _ } => {
+                        let _ = self.state.remove_subscription(&subscription_id, author, subscriber).await;
+                    }
+                    DonationsEvent::PostCreated { post, timestamp: _ } => {
+                        let _ = self.state.create_post(post).await;
+                    }
+                    DonationsEvent::PostUpdated { post, timestamp: _ } => {
+                        let _ = self.state.update_post(&post.id, Some(post.title), Some(post.content), post.image_hash).await;
+                    }
+                    DonationsEvent::PostDeleted { post_id, author, timestamp: _ } => {
+                        let _ = self.state.delete_post(&post_id, author).await;
                     }
                 }
             }

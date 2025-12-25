@@ -8,7 +8,7 @@ use linera_sdk::{linera_base_types::{AccountOwner, WithServiceAbi, Amount}, view
 use donations::{
     DonationsAbi, Operation, AccountInput, Profile as LibProfile, DonationRecord as LibDonationRecord,
     ProfileView, DonationView, SocialLinkInput, TotalAmountView, CustomFields, OrderFormField,
-    OrderFormFieldInput, OrderResponses, Product,
+    OrderFormFieldInput, OrderResponses, Product, ContentSubscription, Post,
 };
 use state::DonationsState;
 use async_graphql::{SimpleObject, InputObject};
@@ -221,6 +221,8 @@ impl QueryRoot {
                     name: p.name,
                     bio: p.bio,
                     socials: p.socials,
+                    avatar_hash: p.avatar_hash,
+                    header_hash: p.header_hash,
                 })
             },
             Err(_) => None,
@@ -236,7 +238,15 @@ impl QueryRoot {
                         for owner in owners {
                             let chain_id = state.subscriptions.get(&owner).await.ok().flatten().unwrap_or_else(|| self.runtime.chain_id().to_string());
                             if let Ok(Some(p)) = state.profiles.get(&owner).await {
-                                res.push(ProfileView { owner: p.owner, chain_id, name: p.name, bio: p.bio, socials: p.socials });
+                                res.push(ProfileView { 
+                                    owner: p.owner, 
+                                    chain_id, 
+                                    name: p.name, 
+                                    bio: p.bio, 
+                                    socials: p.socials,
+                                    avatar_hash: p.avatar_hash,
+                                    header_hash: p.header_hash,
+                                });
                             }
                         }
                         res
@@ -605,6 +615,97 @@ impl QueryRoot {
             Err(_) => None,
         }
     }
+    
+    // Content subscription queries
+    
+    /// Get subscription price and description for an author
+    async fn subscription_price(&self, author: AccountOwner) -> Option<donations::SubscriptionInfo> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => state.get_subscription_price(author).await.ok().flatten(),
+            Err(_) => None,
+        }
+    }
+    
+    /// Get all subscriptions for a user
+    async fn my_subscriptions(&self, subscriber: AccountOwner) -> Vec<ContentSubscription> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.subscriptions_by_subscriber.get(&subscriber).await {
+                    Ok(Some(sub_ids)) => {
+                        let mut subs = Vec::new();
+                        for id in sub_ids {
+                            if let Ok(Some(sub)) = state.content_subscriptions.get(&id).await {
+                                subs.push(sub);
+                            }
+                        }
+                        subs
+                    },
+                    _ => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+    
+    /// Get all subscribers for an author (active subscriptions only)
+    async fn subscribers_of(&self, author: AccountOwner) -> Vec<ContentSubscription> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let current_time = self.runtime.system_time().micros();
+                match state.get_active_subscriptions(author, current_time).await {
+                    Ok(subs) => subs,
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+    
+    /// Get all posts by an author
+    async fn posts_by_author(&self, author: AccountOwner) -> Vec<Post> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                match state.list_posts_by_author(author).await {
+                    Ok(posts) => posts,
+                    Err(_) => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
+    
+    /// Get feed of posts from authors you're subscribed to
+    async fn my_feed(&self, subscriber: AccountOwner) -> Vec<Post> {
+        match DonationsState::load(self.storage_context.clone()).await {
+            Ok(state) => {
+                let current_time = self.runtime.system_time().micros();
+                
+                // Get all active subscriptions
+                match state.subscriptions_by_subscriber.get(&subscriber).await {
+                    Ok(Some(sub_ids)) => {
+                        let mut all_posts = Vec::new();
+                        
+                        for sub_id in sub_ids {
+                            if let Ok(Some(sub)) = state.content_subscriptions.get(&sub_id).await {
+                                // Only include posts from active subscriptions
+                                if sub.end_timestamp >= current_time {
+                                    if let Ok(posts) = state.list_posts_by_author(sub.author).await {
+                                        all_posts.extend(posts);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Sort by created_at descending (newest first)
+                        all_posts.sort_by(|a, b| b.createdAt.cmp(&a.createdAt));
+                        all_posts
+                    },
+                    _ => Vec::new(),
+                }
+            },
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 struct MutationRoot { runtime: Arc<ServiceRuntime<DonationsService>> }
@@ -622,6 +723,16 @@ impl MutationRoot {
     async fn register(&self, main_chain_id: String, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>) -> String {
         let chain_id = main_chain_id.parse().unwrap();
         self.runtime.schedule_operation(&Operation::Register { main_chain_id: chain_id, name, bio, socials });
+        "ok".to_string()
+    }
+    
+    async fn set_avatar(&self, hash: String) -> String {
+        self.runtime.schedule_operation(&Operation::SetAvatar { hash });
+        "ok".to_string()
+    }
+    
+    async fn set_header(&self, hash: String) -> String {
+        self.runtime.schedule_operation(&Operation::SetHeader { hash });
         "ok".to_string()
     }
 
@@ -722,6 +833,80 @@ impl MutationRoot {
     async fn read_data_blob(&self, hash: String) -> String {
         self.runtime.schedule_operation(&Operation::ReadDataBlob { hash: hash.clone() });
         format!("Data blob read scheduled for hash: {}", hash)
+    }
+    
+    // Content subscription mutations
+    
+    /// Set subscription price with description for author's content
+    async fn set_subscription_price(&self, price: String, description: Option<String>) -> String {
+        let amount = price.parse::<Amount>().unwrap_or_default();
+        self.runtime.schedule_operation(&Operation::SetSubscriptionPrice { price: amount, description });
+        "ok".to_string()
+    }
+    
+    /// Delete/disable subscription for author's content
+    async fn delete_subscription_price(&self) -> String {
+        self.runtime.schedule_operation(&Operation::DeleteSubscriptionPrice);
+        "ok".to_string()
+    }
+    
+    /// Subscribe to an author's content for 5 minutes (testing) / 30 days (production)
+    async fn subscribe_to_author(
+        &self,
+        owner: AccountOwner,
+        amount: String,
+        target_account: AccountInput,
+    ) -> String {
+        let fungible_account = linera_sdk::abis::fungible::Account { 
+            chain_id: target_account.chain_id, 
+            owner: target_account.owner 
+        };
+        let payment = amount.parse::<Amount>().unwrap_or_default();
+        
+        self.runtime.schedule_operation(&Operation::SubscribeToAuthor {
+            owner,
+            amount: payment,
+            target_account: fungible_account,
+        });
+        "ok".to_string()
+    }
+    
+    /// Create a new post (will be sent to active subscribers)
+    async fn create_post(
+        &self,
+        title: String,
+        content: String,
+        image_hash: Option<String>,
+    ) -> String {
+        self.runtime.schedule_operation(&Operation::CreatePost {
+            title,
+            content,
+            image_hash,
+        });
+        "ok".to_string()
+    }
+    
+    /// Update an existing post
+    async fn update_post(
+        &self,
+        post_id: String,
+        title: Option<String>,
+        content: Option<String>,
+        image_hash: Option<String>,
+    ) -> String {
+        self.runtime.schedule_operation(&Operation::UpdatePost {
+            post_id,
+            title,
+            content,
+            image_hash,
+        });
+        "ok".to_string()
+    }
+    
+    /// Delete a post
+    async fn delete_post(&self, post_id: String) -> String {
+        self.runtime.schedule_operation(&Operation::DeletePost { post_id });
+        "ok".to_string()
     }
 }
 

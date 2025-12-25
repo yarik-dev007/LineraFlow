@@ -1,6 +1,8 @@
 use linera_sdk::views::{linera_views, MapView, RegisterView, RootView, ViewStorageContext, ViewError};
 use linera_sdk::linera_base_types::{AccountOwner, Amount};
-use donations::{DonationRecord, Profile, SocialLink, Product, Purchase, CustomFields, OrderFormField};
+use donations::{
+    Profile, DonationRecord, SocialLink, Product, Purchase, CustomFields, OrderFormField, ContentSubscription, Post, SubscriptionInfo,
+};
 
 #[derive(RootView)]
 #[view(context = ViewStorageContext)]
@@ -17,6 +19,13 @@ pub struct DonationsState {
     pub purchases: MapView<String, Purchase>,
     pub purchases_by_buyer: MapView<AccountOwner, Vec<String>>,
     pub purchases_by_seller: MapView<AccountOwner, Vec<String>>,
+    // Content subscription state
+    pub subscription_prices: MapView<AccountOwner, SubscriptionInfo>,
+    pub content_subscriptions: MapView<String, ContentSubscription>,
+    pub subscriptions_by_author: MapView<AccountOwner, Vec<String>>,
+    pub subscriptions_by_subscriber: MapView<AccountOwner, Vec<String>>,
+    pub posts: MapView<String, Post>,
+    pub posts_by_author: MapView<AccountOwner, Vec<String>>,
 }
 
 #[allow(dead_code)]
@@ -36,22 +45,69 @@ impl DonationsState {
     }
 
     pub async fn set_name(&mut self, owner: AccountOwner, name: String) -> Result<(), String> {
-        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { owner: owner.clone(), name: "anon".to_string(), bio: String::new(), socials: Vec::new() });
+        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { 
+            owner: owner.clone(), 
+            name: "anon".to_string(), 
+            bio: String::new(), 
+            socials: Vec::new(),
+            avatar_hash: None,
+            header_hash: None,
+        });
         p.name = if name.is_empty() { "anon".to_string() } else { name };
         self.profiles.insert(&owner, p).map_err(|e: ViewError| format!("{:?}", e))
     }
 
     pub async fn set_bio(&mut self, owner: AccountOwner, bio: String) -> Result<(), String> {
-        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { owner: owner.clone(), name: "anon".to_string(), bio: String::new(), socials: Vec::new() });
+        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { 
+            owner: owner.clone(), 
+            name: "anon".to_string(), 
+            bio: String::new(), 
+            socials: Vec::new(),
+            avatar_hash: None,
+            header_hash: None,
+        });
         p.bio = bio;
         self.profiles.insert(&owner, p).map_err(|e: ViewError| format!("{:?}", e))
     }
 
     pub async fn set_social(&mut self, owner: AccountOwner, name: String, url: String) -> Result<(), String> {
-        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { owner: owner.clone(), name: "anon".to_string(), bio: String::new(), socials: Vec::new() });
+        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { 
+            owner: owner.clone(), 
+            name: "anon".to_string(), 
+            bio: String::new(), 
+            socials: Vec::new(),
+            avatar_hash: None,
+            header_hash: None,
+        });
         let mut socials = p.socials;
         if let Some(s) = socials.iter_mut().find(|s| s.name == name) { s.url = url; } else { socials.push(SocialLink { name, url }); }
         p.socials = socials;
+        self.profiles.insert(&owner, p).map_err(|e: ViewError| format!("{:?}", e))
+    }
+
+    pub async fn set_avatar(&mut self, owner: AccountOwner, hash: String) -> Result<(), String> {
+        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { 
+            owner: owner.clone(), 
+            name: "anon".to_string(), 
+            bio: String::new(), 
+            socials: Vec::new(),
+            avatar_hash: None,
+            header_hash: None,
+        });
+        p.avatar_hash = Some(hash);
+        self.profiles.insert(&owner, p).map_err(|e: ViewError| format!("{:?}", e))
+    }
+
+    pub async fn set_header(&mut self, owner: AccountOwner, hash: String) -> Result<(), String> {
+        let mut p = self.profiles.get(&owner).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or(Profile { 
+            owner: owner.clone(), 
+            name: "anon".to_string(), 
+            bio: String::new(), 
+            socials: Vec::new(),
+            avatar_hash: None,
+            header_hash: None,
+        });
+        p.header_hash = Some(hash);
         self.profiles.insert(&owner, p).map_err(|e: ViewError| format!("{:?}", e))
     }
 
@@ -205,5 +261,128 @@ impl DonationsState {
             }
         }
         Ok(res)
+    }
+    
+    // Content subscription management
+    pub async fn set_subscription_price(&mut self, author: AccountOwner, price: Amount, description: Option<String>) -> Result<(), String> {
+        let info = SubscriptionInfo { price, description };
+        self.subscription_prices.insert(&author, info).map_err(|e: ViewError| format!("{:?}", e))
+    }
+    
+    pub async fn get_subscription_price(&self, author: AccountOwner) -> Result<Option<SubscriptionInfo>, String> {
+        self.subscription_prices.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))
+    }
+    
+    pub async fn delete_subscription_info(&mut self, author: AccountOwner) -> Result<(), String> {
+        self.subscription_prices.remove(&author).map_err(|e: ViewError| format!("{:?}", e))
+    }
+    
+    pub async fn create_subscription(&mut self, subscription: ContentSubscription) -> Result<(), String> {
+        let sub_id = subscription.id.clone();
+        let author = subscription.author.clone();
+        let subscriber = subscription.subscriber.clone();
+        
+        self.content_subscriptions.insert(&sub_id, subscription).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Index by author
+        let mut author_subs = self.subscriptions_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        author_subs.push(sub_id.clone());
+        self.subscriptions_by_author.insert(&author, author_subs).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Index by subscriber
+        let mut subscriber_subs = self.subscriptions_by_subscriber.get(&subscriber).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        subscriber_subs.push(sub_id);
+        self.subscriptions_by_subscriber.insert(&subscriber, subscriber_subs).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        Ok(())
+    }
+    
+    pub async fn remove_subscription(&mut self, sub_id: &str, author: AccountOwner, subscriber: AccountOwner) -> Result<(), String> {
+        self.content_subscriptions.remove(&sub_id.to_string()).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Remove from author index
+        let mut author_subs = self.subscriptions_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        author_subs.retain(|id| id != sub_id);
+        self.subscriptions_by_author.insert(&author, author_subs).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        // Remove from subscriber index  
+        let mut subscriber_subs = self.subscriptions_by_subscriber.get(&subscriber).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        subscriber_subs.retain(|id| id != sub_id);
+        self.subscriptions_by_subscriber.insert(&subscriber, subscriber_subs).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        Ok(())
+    }
+    
+    pub async fn get_active_subscriptions(&self, author: AccountOwner, current_time: u64) -> Result<Vec<ContentSubscription>, String> {
+        let sub_ids = self.subscriptions_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        let mut active = Vec::new();
+        
+        for id in sub_ids {
+            if let Some(sub) = self.content_subscriptions.get(&id).await.map_err(|e: ViewError| format!("{:?}", e))? {
+                if sub.end_timestamp >= current_time {
+                    active.push(sub);
+                }
+            }
+        }
+        
+        Ok(active)
+    }
+    
+    pub async fn create_post(&mut self, post: Post) -> Result<(), String> {
+        let post_id = post.id.clone();
+        let author = post.author.clone();
+        
+        self.posts.insert(&post_id, post).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        let mut author_posts = self.posts_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        author_posts.push(post_id);
+        self.posts_by_author.insert(&author, author_posts).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        Ok(())
+    }
+    
+    pub async fn list_posts_by_author(&self, author: AccountOwner) -> Result<Vec<Post>, String> {
+        let ids = self.posts_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        let mut res = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(p) = self.posts.get(&id).await.map_err(|e: ViewError| format!("{:?}", e))? {
+                res.push(p);
+            }
+        }
+        Ok(res)
+    }
+    
+    pub async fn get_post(&self, post_id: &str) -> Result<Option<Post>, String> {
+        self.posts.get(&post_id.to_string()).await.map_err(|e: ViewError| format!("{:?}", e))
+    }
+    
+    pub async fn update_post(&mut self, post_id: &str, title: Option<String>, content: Option<String>, image_hash: Option<String>) -> Result<(), String> {
+        let mut post = self.posts.get(&post_id.to_string()).await
+            .map_err(|e: ViewError| format!("{:?}", e))?
+            .ok_or("Post not found")?;
+        
+        if let Some(t) = title { post.title = t; }
+        if let Some(c) = content { post.content = c; }
+        if let Some(h) = image_hash { post.image_hash = Some(h); }
+        
+        self.posts.insert(&post_id.to_string(), post).map_err(|e: ViewError| format!("{:?}", e))
+    }
+    
+    pub async fn delete_post(&mut self, post_id: &str, author: AccountOwner) -> Result<(), String> {
+        let post = self.posts.get(&post_id.to_string()).await
+            .map_err(|e: ViewError| format!("{:?}", e))?
+            .ok_or("Post not found")?;
+        
+        if post.author != author {
+            return Err("Unauthorized: not post author".to_string());
+        }
+        
+        self.posts.remove(&post_id.to_string()).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        let mut author_posts = self.posts_by_author.get(&author).await.map_err(|e: ViewError| format!("{:?}", e))?.unwrap_or_default();
+        author_posts.retain(|id| id != post_id);
+        self.posts_by_author.insert(&author, author_posts).map_err(|e: ViewError| format!("{:?}", e))?;
+        
+        Ok(())
     }
 }
