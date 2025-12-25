@@ -63,6 +63,8 @@ async function syncProfiles() {
             name
             bio
             socials { name, url }
+            avatarHash
+            headerHash
         }
     }`;
     try {
@@ -81,7 +83,9 @@ async function syncProfiles() {
                     chain_id: p.chainId,
                     name: p.name,
                     bio: p.bio,
-                    socials: p.socials
+                    socials: p.socials,
+                    avatar_hash: p.avatarHash,
+                    header_hash: p.headerHash
                 });
                 console.log(`✅ Updated profile for ${p.owner}`);
             } catch (e) {
@@ -91,7 +95,9 @@ async function syncProfiles() {
                         chain_id: p.chainId,
                         name: p.name,
                         bio: p.bio,
-                        socials: p.socials
+                        socials: p.socials,
+                        avatar_hash: p.avatarHash,
+                        header_hash: p.headerHash
                     });
                     console.log(`✅ Created profile for ${p.owner}`);
                 }

@@ -767,10 +767,10 @@ impl MutationRoot {
     }
     async fn withdraw(&self) -> String { self.runtime.schedule_operation(&Operation::Withdraw); "ok".to_string() }
     async fn mint(&self, owner: AccountOwner, amount: String) -> String { self.runtime.schedule_operation(&Operation::Mint { owner, amount: amount.parse::<Amount>().unwrap_or_default() }); "ok".to_string() }
-    async fn update_profile(&self, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>) -> String { self.runtime.schedule_operation(&Operation::UpdateProfile { name, bio, socials }); "ok".to_string() }
-    async fn register(&self, main_chain_id: String, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>) -> String {
+    async fn update_profile(&self, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>, avatar_hash: Option<String>, header_hash: Option<String>) -> String { self.runtime.schedule_operation(&Operation::UpdateProfile { name, bio, socials, avatar_hash, header_hash }); "ok".to_string() }
+    async fn register(&self, main_chain_id: String, name: Option<String>, bio: Option<String>, socials: Vec<SocialLinkInput>, avatar_hash: Option<String>, header_hash: Option<String>) -> String {
         let chain_id = main_chain_id.parse().unwrap();
-        self.runtime.schedule_operation(&Operation::Register { main_chain_id: chain_id, name, bio, socials });
+        self.runtime.schedule_operation(&Operation::Register { main_chain_id: chain_id, name, bio, socials, avatar_hash, header_hash });
         "ok".to_string()
     }
     

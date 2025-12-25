@@ -73,7 +73,7 @@ impl Contract for DonationsContract {
                 self.runtime.transfer(AccountOwner::CHAIN, target_account, amount);
                 ResponseData::Ok
             }
-            Operation::UpdateProfile { name, bio, socials } => {
+            Operation::UpdateProfile { name, bio, socials, avatar_hash, header_hash } => {
                 let owner = self.runtime.authenticated_signer().unwrap();
                 let ts = self.runtime.system_time().micros();
                 if let Some(n) = name.clone() {
@@ -88,9 +88,17 @@ impl Contract for DonationsContract {
                     let _ = self.state.set_social(owner, s.name.clone(), s.url.clone()).await;
                     self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileSocialUpdated { owner, name: s.name, url: s.url, timestamp: ts });
                 }
+                if let Some(hash) = avatar_hash {
+                    let _ = self.state.set_avatar(owner, hash.clone()).await;
+                    self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileAvatarUpdated { owner, hash, timestamp: ts });
+                }
+                if let Some(hash) = header_hash {
+                    let _ = self.state.set_header(owner, hash.clone()).await;
+                    self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileHeaderUpdated { owner, hash, timestamp: ts });
+                }
                 ResponseData::Ok
             }
-            Operation::Register { main_chain_id, name, bio, socials } => {
+            Operation::Register { main_chain_id, name, bio, socials, avatar_hash, header_hash } => {
                 // Send register message to main chain so it subscribes to our events
                 let owner = self.runtime.authenticated_signer().unwrap();
                 let msg = Message::Register {
@@ -120,6 +128,14 @@ impl Contract for DonationsContract {
                 for s in socials.into_iter() {
                     let _ = self.state.set_social(owner, s.name.clone(), s.url.clone()).await;
                     self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileSocialUpdated { owner, name: s.name, url: s.url, timestamp: ts });
+                }
+                if let Some(hash) = avatar_hash {
+                    let _ = self.state.set_avatar(owner, hash.clone()).await;
+                    self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileAvatarUpdated { owner, hash, timestamp: ts });
+                }
+                if let Some(hash) = header_hash {
+                    let _ = self.state.set_header(owner, hash.clone()).await;
+                    self.runtime.emit("donations_events".into(), &DonationsEvent::ProfileHeaderUpdated { owner, hash, timestamp: ts });
                 }
                 ResponseData::Ok
             }

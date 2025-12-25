@@ -3,6 +3,7 @@ import { UserProfile } from '../types';
 import { generateCreativeBio } from '../services/geminiService';
 import { useLinera } from './LineraProvider';
 import { cacheManager } from '../utils/cacheManager';
+import { Image as ImageIcon, Check } from 'lucide-react';
 
 interface ProfileEditorProps {
     initialProfile: UserProfile;
@@ -20,6 +21,14 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [hasProfile, setHasProfile] = useState(false);
+
+    // Image upload state
+    const [avatarFile, setAvatarFile] = useState<File | null>(null);
+    const [avatarHash, setAvatarHash] = useState('');
+    const [headerFile, setHeaderFile] = useState<File | null>(null);
+    const [headerHash, setHeaderHash] = useState('');
+    const [uploadStatus, setUploadStatus] = useState<string>('');
+    const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
 
     // Fetch Profile on Mount and when balance changes (indicating new blocks)
     useEffect(() => {
@@ -49,6 +58,8 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
       name
       url
     }
+    avatarHash
+    headerHash
   }
 }`;
                 console.log('👤 [Profile] Fetching fresh data...');
@@ -78,6 +89,10 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                         bio: profileData.bio || '',
                         socials: socialsMap
                     };
+
+                    // Set image hashes
+                    if (profileData.avatarHash) setAvatarHash(profileData.avatarHash);
+                    if (profileData.headerHash) setHeaderHash(profileData.headerHash);
 
                     // 3. Update only if different from cache
                     const isDifferent = JSON.stringify(freshProfile) !== JSON.stringify(cached);
@@ -120,6 +135,51 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
         }
     };
 
+    // Image upload functions
+    const handleUploadSuccess = (hash: string, id: string) => {
+        setUploadStatus('✅ Upload Complete');
+
+        if (id === 'avatar') {
+            setAvatarHash(hash);
+        } else if (id === 'header') {
+            setHeaderHash(hash);
+        }
+        setActiveUploadId(null);
+    };
+
+    const uploadFile = (file: File, id: string) => {
+        setActiveUploadId(id);
+        setUploadStatus(`Uploading ${file.name}...`);
+
+        const reader = new FileReader();
+        reader.onload = async () => {
+            try {
+                const response = await fetch('http://localhost:8070/upload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'publish_blob',
+                        file: (reader.result as string),
+                        fileType: file.type
+                    })
+                });
+
+                const data = await response.json();
+                if (response.ok && data.hash) {
+                    handleUploadSuccess(data.hash, id);
+                } else {
+                    setUploadStatus(`❌ Error: ${data.error || 'Upload failed'}`);
+                    setActiveUploadId(null);
+                }
+            } catch (e) {
+                console.error(e);
+                setUploadStatus('❌ Connection failed. Check server.');
+                setActiveUploadId(null);
+            }
+        };
+        reader.readAsDataURL(file);
+    };
+
     const handleSave = async () => {
         if (!application || !accountOwner) {
             alert("Wallet not connected!");
@@ -145,7 +205,9 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
   updateProfile(
     name: "${profile.displayName}",
     bio: "${profile.bio}",
-    socials: ${socialsString}
+    socials: ${socialsString},
+    avatarHash: ${avatarHash ? `"${avatarHash}"` : 'null'},
+    headerHash: ${headerHash ? `"${headerHash}"` : 'null'}
   )
 }`;
             } else {
@@ -155,7 +217,9 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
     mainChainId: "${MAIN_CHAIN_ID}",
     name: "${profile.displayName}",
     bio: "${profile.bio}",
-    socials: ${socialsString}
+    socials: ${socialsString},
+    avatarHash: ${avatarHash ? `"${avatarHash}"` : 'null'},
+    headerHash: ${headerHash ? `"${headerHash}"` : 'null'}
   )
 }`;
             }
@@ -442,10 +506,114 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                     </div>
                 </div>
 
+                {/* Profile Images */}
+                <div className="space-y-4">
+                    <h3 className="font-display text-xl uppercase border-b-2 border-gray-200 pb-1">Profile Images</h3>
+
+                    {/* Avatar Upload */}
+                    <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">
+                        <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
+                            <ImageIcon className="w-4 h-4" /> Avatar (Profile Picture)
+                        </label>
+                        {avatarHash ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Avatar Uploaded
+                                    </span>
+                                    <button
+                                        onClick={() => { setAvatarHash(''); setAvatarFile(null); }}
+                                        className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
+                                    >
+                                        Replace Avatar
+                                    </button>
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
+                                    {avatarHash}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={e => {
+                                        if (e.target.files && e.target.files[0]) {
+                                            setAvatarFile(e.target.files[0]);
+                                        }
+                                    }}
+                                    className="text-sm"
+                                />
+                                {avatarFile && (
+                                    <button
+                                        onClick={() => uploadFile(avatarFile, 'avatar')}
+                                        className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold"
+                                    >
+                                        Upload
+                                    </button>
+                                )}
+                                {activeUploadId === 'avatar' && <span className="text-xs animate-pulse">Uploading...</span>}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Header Upload */}
+                    <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">
+                        <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
+                            <ImageIcon className="w-4 h-4" /> Header (Cover Image)
+                        </label>
+                        {headerHash ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Header Uploaded
+                                    </span>
+                                    <button
+                                        onClick={() => { setHeaderHash(''); setHeaderFile(null); }}
+                                        className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
+                                    >
+                                        Replace Header
+                                    </button>
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
+                                    {headerHash}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={e => {
+                                        if (e.target.files && e.target.files[0]) {
+                                            setHeaderFile(e.target.files[0]);
+                                        }
+                                    }}
+                                    className="text-sm"
+                                />
+                                {headerFile && (
+                                    <button
+                                        onClick={() => uploadFile(headerFile, 'header')}
+                                        className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold"
+                                    >
+                                        Upload
+                                    </button>
+                                )}
+                                {activeUploadId === 'header' && <span className="text-xs animate-pulse">Uploading...</span>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
             </div>
 
             {/* Footer Actions */}
             <div className="p-4 md:p-6 pt-0 border-t-2 border-gray-100 mt-4">
+                {uploadStatus && (
+                    <div className="mb-4 text-center">
+                        <span className="text-xs font-bold text-linera-red animate-pulse">{uploadStatus}</span>
+                    </div>
+                )}
                 <button
                     onClick={handleSave}
                     className={`
