@@ -1,5 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { Creator } from '../types';
+import { pb } from './pocketbase';
+
+// Helper to get image URL
+const getImageUrl = (creator: Creator, filename?: string) => {
+  if (!filename || !creator.collectionId || !creator.id) return null;
+  return pb.files.getUrl({ collectionId: creator.collectionId, id: creator.id, collectionName: creator.collectionName }, filename);
+};
 
 interface CreatorExplorerProps {
   creators: Creator[];
@@ -71,17 +78,33 @@ const CreatorExplorer: React.FC<CreatorExplorerProps> = ({ creators, onSelectCre
             >
               {/* Card Header/Image Placeholder */}
               <div className="h-40 bg-gray-100 border-b-4 border-deep-black relative overflow-hidden group-hover:bg-gray-50 transition-colors">
-                <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-linera-red to-transparent scale-75 group-hover:scale-100 transition-transform duration-500"></div>
+                {creator.header_file ? (
+                  <img
+                    src={getImageUrl(creator, creator.header_file) || ''}
+                    alt="Header"
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-linera-red to-transparent scale-75 group-hover:scale-100 transition-transform duration-500"></div>
+                )}
+
                 <div className="absolute top-2 right-2 bg-deep-black text-white text-xs font-mono px-2 py-1 z-10">
                   {creator.category}
                 </div>
                 <div className="absolute bottom-0 left-0 p-4 w-full">
                   <div className="flex items-end gap-4">
-                    <div className="w-16 h-16 bg-deep-black border-2 border-white shadow-sm flex items-center justify-center overflow-hidden">
-                      {/* Initials Avatar */}
-                      <span className="font-display text-white text-2xl">{creator.name.substring(0, 1)}</span>
+                    <div className="w-16 h-16 bg-deep-black border-2 border-white shadow-sm flex items-center justify-center overflow-hidden relative z-10">
+                      {creator.avatar_file ? (
+                        <img
+                          src={getImageUrl(creator, creator.avatar_file) || ''}
+                          alt={creator.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="font-display text-white text-2xl">{creator.name.substring(0, 1)}</span>
+                      )}
                     </div>
-                    <div className="mb-1">
+                    <div className="mb-1 relative z-10">
                       <h3 className="font-display text-xl uppercase leading-none text-deep-black bg-white px-1 inline-block">{creator.name}</h3>
                     </div>
                   </div>

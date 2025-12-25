@@ -101,7 +101,11 @@ const AppContent: React.FC = () => {
           chainId: record.chain_id,
           socials: record.socials || [],
           donations: recentDonations,
-          productsCount: productCount
+          productsCount: productCount,
+          avatar_file: record.avatar_file,
+          header_file: record.header_file,
+          collectionId: record.collectionId,
+          collectionName: record.collectionName
         };
       });
 

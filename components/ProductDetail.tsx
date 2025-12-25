@@ -43,6 +43,16 @@ const ProductDetail: React.FC = () => {
                     const record = await pb.collection('products').getFirstListItem(`product_id="${productId}"`);
 
                     if (record) {
+                        // Fetch profile for author
+                        let authorProfile = null;
+                        if (record.owner) {
+                            try {
+                                authorProfile = await pb.collection('profiles').getFirstListItem(`owner="${record.owner}"`);
+                            } catch (err) {
+                                // Ignore if profile not found
+                            }
+                        }
+
                         const p: Product = {
                             id: record.product_id,
                             pbId: record.id,
@@ -66,7 +76,13 @@ const ProductDetail: React.FC = () => {
                             orderForm: record.order_form || [],
                             createdAt: Date.parse(record.created) / 1000,
                             image_preview_hash: record.image_preview_hash,
-                            data_blob_hash: record.file_hash
+                            data_blob_hash: record.file_hash,
+
+                            // Author Info
+                            authorAvatar: authorProfile?.avatar_file,
+                            authorProfileId: authorProfile?.id,
+                            authorProfileCollectionId: authorProfile?.collectionId,
+                            authorDisplayName: authorProfile?.name
                         };
 
                         if (isMounted.current) {
@@ -234,13 +250,22 @@ const ProductDetail: React.FC = () => {
 
                         <div className="flex flex-wrap items-center gap-4 mb-6 pb-6 border-b-2 border-gray-100">
                             <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-linera-red flex items-center justify-center text-white font-bold text-[10px] border border-black">
-                                    {product.authorChainId ? product.authorChainId.substring(0, 2) : product.author.substring(0, 2)}
-                                </div>
+                                {/* Author Avatar */}
+                                {product.authorAvatar && product.authorProfileId && product.authorProfileCollectionId ? (
+                                    <img
+                                        src={`/pb/api/files/${product.authorProfileCollectionId}/${product.authorProfileId}/${product.authorAvatar}`}
+                                        alt={product.authorDisplayName || 'Author'}
+                                        className="w-8 h-8 rounded-full border border-deep-black object-cover shadow-sm bg-white"
+                                    />
+                                ) : (
+                                    <div className="w-8 h-8 rounded-full bg-linera-red flex items-center justify-center text-white font-bold text-xs border border-deep-black shadow-sm">
+                                        {(product.authorDisplayName || product.author || '?').substring(0, 2).toUpperCase()}
+                                    </div>
+                                )}
                                 <div className="flex flex-col">
                                     <span className="text-[10px] text-gray-400 font-bold uppercase">Created By</span>
                                     <span className="text-xs font-bold font-mono text-linera-red">
-                                        {product.authorChainId ? product.authorChainId.substring(0, 8) : product.author.substring(0, 8)}...
+                                        {product.authorDisplayName || (product.authorChainId ? product.authorChainId.substring(0, 8) : product.author.substring(0, 8))}...
                                     </span>
                                 </div>
                             </div>

@@ -97,9 +97,25 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                         <h3 className="font-display text-lg leading-tight mb-1 line-clamp-2">
                             {product.name}
                         </h3>
-                        <p className="text-xs font-mono text-gray-500 uppercase">
-                            By {(product.chain_id || product.authorChainId || product.author).substring(0, 8)}...
-                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                            {/* Author Avatar */}
+                            {product.authorAvatar && product.authorProfileId && product.authorProfileCollectionId ? (
+                                <img
+                                    src={`/pb/api/files/${product.authorProfileCollectionId}/${product.authorProfileId}/${product.authorAvatar}`}
+                                    alt={product.authorDisplayName || 'Author'}
+                                    className="w-6 h-6 rounded-full border border-deep-black object-cover shadow-sm bg-white"
+                                />
+                            ) : (
+                                <div className="w-6 h-6 rounded-full border border-deep-black bg-gray-100 flex items-center justify-center shadow-sm">
+                                    <span className="text-[10px] font-bold text-gray-400 font-mono">
+                                        {(product.authorDisplayName || product.author || '?').substring(0, 1).toUpperCase()}
+                                    </span>
+                                </div>
+                            )}
+                            <p className="text-xs font-mono text-gray-600 uppercase truncate max-w-[140px] font-bold">
+                                {product.authorDisplayName || (product.authorAddress ? `${product.authorAddress.substring(0, 6)}...` : 'Unknown')}
+                            </p>
+                        </div>
                     </div>
                 </div>
 

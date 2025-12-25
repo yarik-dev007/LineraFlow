@@ -30,6 +30,10 @@ export interface Creator {
   socials?: any[];
   donations?: any[];
   productsCount?: number;
+  avatar_file?: string;
+  header_file?: string;
+  collectionId?: string;
+  collectionName?: string;
 }
 
 export interface KeyValuePair {
@@ -54,6 +58,11 @@ export interface Product {
   price: string;
   privateData?: KeyValuePair[];
   orderForm?: OrderFormField[];
+  // Resolved author info
+  authorAvatar?: string;
+  authorProfileId?: string;
+  authorProfileCollectionId?: string;
+  authorDisplayName?: string;
   successMessage?: string; // Added from new spec
   createdAt: number;
 

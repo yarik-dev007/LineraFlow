@@ -398,6 +398,105 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
 
             <div className="p-4 md:p-6 space-y-6 md:space-y-8 h-[60vh] overflow-y-auto custom-scrollbar">
 
+                {/* Profile Images */}
+                <div className="space-y-4">
+                    <h3 className="font-display text-xl uppercase border-b-2 border-gray-200 pb-1">Profile Images</h3>
+
+                    {/* Avatar Upload */}
+                    <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">
+                        <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
+                            <ImageIcon className="w-4 h-4" /> Avatar (Profile Picture)
+                        </label>
+                        {avatarHash ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Avatar Uploaded
+                                    </span>
+                                    <button
+                                        onClick={() => { setAvatarHash(''); setAvatarFile(null); }}
+                                        className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
+                                    >
+                                        Replace Avatar
+                                    </button>
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
+                                    {avatarHash}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={e => {
+                                        if (e.target.files && e.target.files[0]) {
+                                            setAvatarFile(e.target.files[0]);
+                                        }
+                                    }}
+                                    className="text-sm"
+                                />
+                                {avatarFile && (
+                                    <button
+                                        onClick={() => uploadFile(avatarFile, 'avatar')}
+                                        className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold"
+                                    >
+                                        Upload
+                                    </button>
+                                )}
+                                {activeUploadId === 'avatar' && <span className="text-xs animate-pulse">Uploading...</span>}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Header Upload */}
+                    <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">
+                        <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
+                            <ImageIcon className="w-4 h-4" /> Header (Cover Image)
+                        </label>
+                        {headerHash ? (
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Header Uploaded
+                                    </span>
+                                    <button
+                                        onClick={() => { setHeaderHash(''); setHeaderFile(null); }}
+                                        className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
+                                    >
+                                        Replace Header
+                                    </button>
+                                </div>
+                                <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
+                                    {headerHash}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-4">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={e => {
+                                        if (e.target.files && e.target.files[0]) {
+                                            setHeaderFile(e.target.files[0]);
+                                        }
+                                    }}
+                                    className="text-sm"
+                                />
+                                {headerFile && (
+                                    <button
+                                        onClick={() => uploadFile(headerFile, 'header')}
+                                        className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold"
+                                    >
+                                        Upload
+                                    </button>
+                                )}
+                                {activeUploadId === 'header' && <span className="text-xs animate-pulse">Uploading...</span>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
                 {/* Name Input */}
                 <fieldset className="relative border-2 border-deep-black p-4 pt-2 group focus-within:shadow-hard-sm transition-shadow">
                     <legend className="font-mono text-xs font-bold px-2 bg-paper-white border-2 border-deep-black uppercase">
@@ -503,105 +602,6 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                                 />
                             </div>
                         </fieldset>
-                    </div>
-                </div>
-
-                {/* Profile Images */}
-                <div className="space-y-4">
-                    <h3 className="font-display text-xl uppercase border-b-2 border-gray-200 pb-1">Profile Images</h3>
-
-                    {/* Avatar Upload */}
-                    <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">
-                        <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
-                            <ImageIcon className="w-4 h-4" /> Avatar (Profile Picture)
-                        </label>
-                        {avatarHash ? (
-                            <div className="flex flex-col gap-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-green-600 text-xs font-bold flex items-center gap-1">
-                                        <Check className="w-3 h-3" /> Avatar Uploaded
-                                    </span>
-                                    <button
-                                        onClick={() => { setAvatarHash(''); setAvatarFile(null); }}
-                                        className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
-                                    >
-                                        Replace Avatar
-                                    </button>
-                                </div>
-                                <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
-                                    {avatarHash}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-4">
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={e => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            setAvatarFile(e.target.files[0]);
-                                        }
-                                    }}
-                                    className="text-sm"
-                                />
-                                {avatarFile && (
-                                    <button
-                                        onClick={() => uploadFile(avatarFile, 'avatar')}
-                                        className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold"
-                                    >
-                                        Upload
-                                    </button>
-                                )}
-                                {activeUploadId === 'avatar' && <span className="text-xs animate-pulse">Uploading...</span>}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Header Upload */}
-                    <div className="border-2 border-dashed border-gray-300 p-4 bg-white rounded">
-                        <label className="text-xs font-bold uppercase flex items-center gap-2 mb-2 text-linera-red">
-                            <ImageIcon className="w-4 h-4" /> Header (Cover Image)
-                        </label>
-                        {headerHash ? (
-                            <div className="flex flex-col gap-2">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-green-600 text-xs font-bold flex items-center gap-1">
-                                        <Check className="w-3 h-3" /> Header Uploaded
-                                    </span>
-                                    <button
-                                        onClick={() => { setHeaderHash(''); setHeaderFile(null); }}
-                                        className="text-xs text-red-500 hover:text-red-700 font-bold uppercase underline"
-                                    >
-                                        Replace Header
-                                    </button>
-                                </div>
-                                <div className="text-xs text-gray-500 font-mono break-all bg-gray-50 p-1 rounded select-all">
-                                    {headerHash}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-4">
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={e => {
-                                        if (e.target.files && e.target.files[0]) {
-                                            setHeaderFile(e.target.files[0]);
-                                        }
-                                    }}
-                                    className="text-sm"
-                                />
-                                {headerFile && (
-                                    <button
-                                        onClick={() => uploadFile(headerFile, 'header')}
-                                        className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold"
-                                    >
-                                        Upload
-                                    </button>
-                                )}
-                                {activeUploadId === 'header' && <span className="text-xs animate-pulse">Uploading...</span>}
-                            </div>
-                        )}
                     </div>
                 </div>
 

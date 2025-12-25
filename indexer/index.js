@@ -78,29 +78,65 @@ async function syncProfiles() {
 
         for (const p of profiles) {
             try {
-                const existing = await pb.collection('profiles').getFirstListItem(`owner="${p.owner}"`);
-                await pb.collection('profiles').update(existing.id, {
-                    chain_id: p.chainId,
-                    name: p.name,
-                    bio: p.bio,
-                    socials: p.socials,
-                    avatar_hash: p.avatarHash,
-                    header_hash: p.headerHash
-                });
-                console.log(`✅ Updated profile for ${p.owner}`);
-            } catch (e) {
-                if (e.status === 404) {
-                    await pb.collection('profiles').create({
-                        owner: p.owner,
-                        chain_id: p.chainId,
-                        name: p.name,
-                        bio: p.bio,
-                        socials: p.socials,
-                        avatar_hash: p.avatarHash,
-                        header_hash: p.headerHash
-                    });
+                const existing = await pb.collection('profiles').getFirstListItem(`owner="${p.owner}"`).catch(() => null);
+
+                // Prepare FormData for file upload support
+                const data = new FormData();
+                data.append('chain_id', p.chainId);
+                data.append('name', p.name);
+                data.append('bio', p.bio);
+                data.append('socials', JSON.stringify(p.socials));
+                data.append('avatar_hash', p.avatarHash || '');
+                data.append('header_hash', p.headerHash || '');
+                if (!existing) {
+                    data.append('owner', p.owner);
+                }
+
+                // Avatar Processing
+                if (p.avatarHash) {
+                    const hasAvatar = existing && existing.avatar_file;
+                    const hashDiff = existing && existing.avatar_hash !== p.avatarHash;
+
+                    if (!hasAvatar || hashDiff) {
+                        console.log(`🖼️  [SYNC] Fetching avatar blob ${p.avatarHash.substring(0, 8)} for ${p.name}...`);
+                        const blobQuery = `query { dataBlob(hash: "${p.avatarHash}") }`;
+                        const blobRes = await fetchGraphQL(blobQuery);
+                        const bytes = blobRes.data?.dataBlob;
+
+                        if (bytes && bytes.length > 0) {
+                            const imageBlob = new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' }); // Defaulting to jpeg, PB handles detection
+                            data.append('avatar_file', imageBlob, `avatar_${p.owner}.jpg`);
+                        }
+                    }
+                }
+
+                // Header Processing
+                if (p.headerHash) {
+                    const hasHeader = existing && existing.header_file;
+                    const hashDiff = existing && existing.header_hash !== p.headerHash;
+
+                    if (!hasHeader || hashDiff) {
+                        console.log(`🖼️  [SYNC] Fetching header blob ${p.headerHash.substring(0, 8)} for ${p.name}...`);
+                        const blobQuery = `query { dataBlob(hash: "${p.headerHash}") }`;
+                        const blobRes = await fetchGraphQL(blobQuery);
+                        const bytes = blobRes.data?.dataBlob;
+
+                        if (bytes && bytes.length > 0) {
+                            const imageBlob = new Blob([new Uint8Array(bytes)], { type: 'image/jpeg' });
+                            data.append('header_file', imageBlob, `header_${p.owner}.jpg`);
+                        }
+                    }
+                }
+
+                if (existing) {
+                    await pb.collection('profiles').update(existing.id, data);
+                    console.log(`✅ Updated profile for ${p.owner}`);
+                } else {
+                    await pb.collection('profiles').create(data);
                     console.log(`✅ Created profile for ${p.owner}`);
                 }
+            } catch (e) {
+                console.error(`❌ Error processing profile ${p.owner}:`, e.message);
             }
         }
     } catch (e) {

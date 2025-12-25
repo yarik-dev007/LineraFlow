@@ -208,24 +208,45 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
                 filter: filter,
             });
 
-            const mappedProducts: Product[] = records.map((r: any) => ({
-                id: r.product_id,
-                pbId: r.id,
-                collectionId: r.collectionId,
-                name: r.name,
-                description: r.description,
-                price: r.price,
-                image: r.image,
-                image_preview: r.image_preview,
-                author: r.owner,
-                authorAddress: r.owner,
-                authorChainId: r.chain_id,
-                image_preview_hash: r.image_preview_hash,
-                data_blob_hash: r.file_hash,
-                publicData: [],
-                orderForm: r.order_form || [],
-                createdAt: Date.parse(r.created) / 1000
-            }));
+            // Fetch Profiles for authors
+            const authors = Array.from(new Set(records.map((r: any) => r.owner)));
+            let pbProfiles: any[] = [];
+            if (authors.length > 0) {
+                try {
+                    const profileFilter = authors.map(a => `owner="${a}"`).join('||');
+                    pbProfiles = await pb.collection('profiles').getFullList({ filter: profileFilter });
+                } catch (e) {
+                    console.warn('⚠️ [Browse] Failed to fetch profiles:', e);
+                }
+            }
+
+            const mappedProducts: Product[] = records.map((r: any) => {
+                const profile = pbProfiles.find(p => p.owner === r.owner);
+                return {
+                    id: r.product_id,
+                    pbId: r.id,
+                    collectionId: r.collectionId,
+                    name: r.name,
+                    description: r.description,
+                    price: r.price,
+                    image: r.image,
+                    image_preview: r.image_preview,
+                    author: r.owner,
+                    authorAddress: r.owner,
+                    authorChainId: r.chain_id,
+                    image_preview_hash: r.image_preview_hash,
+                    data_blob_hash: r.file_hash,
+                    publicData: [],
+                    orderForm: r.order_form || [],
+                    createdAt: Date.parse(r.created) / 1000,
+
+                    // Author Info
+                    authorAvatar: profile?.avatar_file,
+                    authorProfileId: profile?.id,
+                    authorProfileCollectionId: profile?.collectionId,
+                    authorDisplayName: profile?.name
+                };
+            });
 
             // Deduplicate by on-chain ID before comparing with cache
             const uniqueProducts: Product[] = [];
@@ -264,19 +285,30 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
 
     const enrichProductsWithMetadata = async (onChainProducts: any[], previousEnriched: Product[] = []): Promise<Product[]> => {
         const productIds = Array.from(new Set(onChainProducts.map((p: any) => p.id)));
-        let pbRecords: any[] = [];
+        const authors = Array.from(new Set(onChainProducts.map((p: any) => p.author)));
 
-        if (productIds.length > 0) {
-            const filter = productIds.map(id => `product_id="${id}"`).join('||');
-            try {
+        let pbRecords: any[] = [];
+        let pbProfiles: any[] = [];
+
+        try {
+            // 1. Fetch PB Products
+            if (productIds.length > 0) {
+                const filter = productIds.map(id => `product_id="${id}"`).join('||');
                 pbRecords = await pb.collection('products').getFullList({ filter });
-            } catch (err) {
-                console.warn('⚠️ [Marketplace] Failed to fetch metadata from PocketBase:', err);
             }
+
+            // 2. Fetch PB Profiles for Authors
+            if (authors.length > 0) {
+                const filter = authors.map(a => `owner="${a}"`).join('||');
+                pbProfiles = await pb.collection('profiles').getFullList({ filter });
+            }
+        } catch (err) {
+            console.warn('⚠️ [Marketplace] Failed to fetch metadata from PocketBase:', err);
         }
 
         return onChainProducts.map((p: Product) => {
             const pbProduct = pbRecords.find(r => r.product_id === p.id);
+            const pbProfile = pbProfiles.find(r => r.owner === p.author);
             const prev = previousEnriched.find(item => item.id === p.id);
 
             return {
@@ -287,6 +319,12 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
                 image_preview: pbProduct?.image_preview || prev?.image_preview,
                 image_preview_hash: pbProduct?.image_preview_hash || p.image_preview_hash,
                 data_blob_hash: pbProduct?.file_hash || p.data_blob_hash,
+
+                // Author Info
+                authorAvatar: pbProfile?.avatar_file || prev?.authorAvatar,
+                authorProfileId: pbProfile?.id || prev?.authorProfileId,
+                authorProfileCollectionId: pbProfile?.collectionId || prev?.authorProfileCollectionId,
+                authorDisplayName: pbProfile?.name || prev?.authorDisplayName
             };
         });
     };

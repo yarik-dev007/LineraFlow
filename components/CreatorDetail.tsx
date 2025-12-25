@@ -2,6 +2,13 @@ import React, { useMemo } from 'react';
 import { Creator } from '../types';
 import { useNavigate } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
+import { pb } from './pocketbase';
+
+// Helper to get image URL
+const getImageUrl = (creator: Creator, filename?: string) => {
+    if (!filename || !creator.collectionId || !creator.id) return null;
+    return pb.files.getUrl({ collectionId: creator.collectionId, id: creator.id, collectionName: creator.collectionName }, filename);
+};
 
 interface CreatorDetailProps {
     creator: Creator;
@@ -43,14 +50,30 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
             {/* Header Section */}
             <div className="relative bg-paper-white border-4 border-deep-black shadow-hard mb-8">
                 <div className="h-40 md:h-64 bg-deep-black overflow-hidden relative">
-                    <div className="absolute inset-0 opacity-30 bg-[linear-gradient(45deg,#FF4438_25%,transparent_25%,transparent_50%,#FF4438_50%,#FF4438_75%,transparent_75%,transparent)] bg-[length:20px_20px]"></div>
+                    {creator.header_file ? (
+                        <img
+                            src={getImageUrl(creator, creator.header_file) || ''}
+                            alt="Header"
+                            className="absolute inset-0 w-full h-full object-cover"
+                        />
+                    ) : (
+                        <div className="absolute inset-0 opacity-30 bg-[linear-gradient(45deg,#FF4438_25%,transparent_25%,transparent_50%,#FF4438_50%,#FF4438_75%,transparent_75%,transparent)] bg-[length:20px_20px]"></div>
+                    )}
                     <div className="absolute bottom-0 left-0 w-full h-1/2 bg-gradient-to-t from-black to-transparent"></div>
                 </div>
 
                 <div className="px-6 md:px-8 pb-8 relative">
                     {/* Avatar - Negative Margin to overlap */}
-                    <div className="absolute -top-12 md:-top-16 left-6 md:left-8 w-24 h-24 md:w-32 md:h-32 bg-white border-4 border-deep-black shadow-sm flex items-center justify-center">
-                        <span className="font-display text-2xl md:text-4xl text-deep-black">{creator.name.substring(0, 2).toUpperCase()}</span>
+                    <div className="absolute -top-12 md:-top-16 left-6 md:left-8 w-24 h-24 md:w-32 md:h-32 bg-white border-4 border-deep-black shadow-sm flex items-center justify-center overflow-hidden">
+                        {creator.avatar_file ? (
+                            <img
+                                src={getImageUrl(creator, creator.avatar_file) || ''}
+                                alt={creator.name}
+                                className="w-full h-full object-cover"
+                            />
+                        ) : (
+                            <span className="font-display text-2xl md:text-4xl text-deep-black">{creator.name.substring(0, 2).toUpperCase()}</span>
+                        )}
                     </div>
 
                     <div className="pl-0 md:pl-40 pt-16 md:pt-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 md:gap-4">
