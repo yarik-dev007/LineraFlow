@@ -18,7 +18,7 @@ interface MarketplaceProps {
 
 const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
     const { ownerId } = useParams<{ ownerId: string }>();
-    const { application, accountOwner, autoSignEnabled, subscribeToMyItems, unsubscribeFromMyItems, subscribeToMyPurchases, unsubscribeFromMyPurchases, subscribeToMarketplace, unsubscribeFromMarketplace } = useLinera();
+    const { application, accountOwner, autoSignEnabled, subscribeToMyItems, unsubscribeFromMyItems, subscribeToMyPurchases, unsubscribeFromMyPurchases, subscribeToMarketplace, unsubscribeFromMarketplace, subscribeToMyOrders, unsubscribeFromMyOrders } = useLinera();
     const navigate = useNavigate();
     const isMountedRef = useRef(true);
     const instanceId = useRef(Math.random().toString(36).substr(2, 5));
@@ -94,6 +94,20 @@ const Marketplace: React.FC<MarketplaceProps> = ({ currentUserAddress }) => {
             };
         }
     }, [activeTab, subscribeToMarketplace, unsubscribeFromMarketplace]);
+
+    // Subscribe to My Orders updates when on MY_ITEMS -> ORDERS mode
+    useEffect(() => {
+        if (activeTab === 'MY_ITEMS' && myItemsMode === 'ORDERS') {
+            subscribeToMyOrders(() => {
+                console.log('🔔 [Marketplace] My Orders notification received');
+                fetchMyOrders(true); // Silent refresh
+            });
+
+            return () => {
+                unsubscribeFromMyOrders();
+            };
+        }
+    }, [activeTab, myItemsMode, subscribeToMyOrders, unsubscribeFromMyOrders]);
 
     // Fetch Products from PocketBase (Browse Tab)
     const fetchProducts = async (silent = false) => {
