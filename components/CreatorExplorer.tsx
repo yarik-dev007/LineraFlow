@@ -5,7 +5,7 @@ import { pb } from './pocketbase';
 // Helper to get image URL
 const getImageUrl = (creator: Creator, filename?: string) => {
   if (!filename || !creator.collectionId || !creator.id) return null;
-  return pb.files.getUrl({ collectionId: creator.collectionId, id: creator.id, collectionName: creator.collectionName }, filename);
+  return pb.files.getURL({ collectionId: creator.collectionId, id: creator.id, collectionName: creator.collectionName }, filename);
 };
 
 interface CreatorExplorerProps {

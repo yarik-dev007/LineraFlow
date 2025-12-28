@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react';
 // Helper to get image URL
 const getImageUrl = (creator: Creator, filename?: string) => {
     if (!filename || !creator.collectionId || !creator.id) return null;
-    return pb.files.getUrl({ collectionId: creator.collectionId, id: creator.id, collectionName: creator.collectionName }, filename);
+    return pb.files.getURL({ collectionId: creator.collectionId, id: creator.id, collectionName: creator.collectionName }, filename);
 };
 
 interface CreatorDetailProps {
@@ -53,10 +53,10 @@ const CreatorDetail: React.FC<CreatorDetailProps> = ({ creator, allDonations, on
         try {
             const mutation = `mutation {
                 subscribeToAuthor(
-                    owner: "${creator.contractAddress}",
+                    owner: "${accountOwner}",
                     amount: "${subscriptionOffer.price}",
-                    target_account: {
-                        chain_id: "${creator.chainId || chainId}",
+                    targetAccount: {
+                        chainId: "${creator.chainId || chainId}",
                         owner: "${creator.contractAddress}"
                     }
                 )

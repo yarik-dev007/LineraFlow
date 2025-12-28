@@ -14,6 +14,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggl
   const navItems = [
     { id: 'EXPLORE', label: 'EXPLORE', icon: '○' },
     { id: 'MARKETPLACE', label: 'MARKET', icon: '◇' },
+    { id: 'FEED', label: 'MY FEED', icon: '▤' },
     { id: 'PROFILE', label: 'IDENTITY', icon: '□' },
   ];
 
@@ -41,11 +42,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggl
               className={`
                 flex items-center px-6 py-4 transition-all duration-200
                 ${currentView === item.id
-                  ? 'bg-white text-deep-black font-bold translate-x-2 shadow-[4px_4px_0px_0px_#FF4438]'
+                  ? item.id === 'FEED'
+                    ? 'bg-emerald-500 text-white font-bold translate-x-2 shadow-[4px_4px_0px_0px_#000]'
+                    : 'bg-white text-deep-black font-bold translate-x-2 shadow-[4px_4px_0px_0px_#FF4438]'
                   : 'hover:bg-white/10 text-gray-300 hover:text-white'}
               `}
             >
-              <span className="text-xl font-mono mr-4 text-center w-6">{item.icon}</span>
+              <span className={`text-xl font-mono mr-4 text-center w-6 ${item.id === 'FEED' && currentView !== 'FEED' ? 'text-emerald-500' : ''}`}>{item.icon}</span>
               <span className="font-mono uppercase tracking-widest text-sm">{item.label}</span>
             </button>
           ))}
@@ -81,7 +84,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggl
           <button
             key={item.id}
             onClick={() => setView(item.id as AppView)}
-            className={`flex flex-col items-center justify-center w-full h-full pt-2 transition-colors ${currentView === item.id ? 'text-linera-red' : 'text-gray-400'}`}
+            className={`flex flex-col items-center justify-center w-full h-full pt-2 transition-colors 
+                ${currentView === item.id
+                ? item.id === 'FEED' ? 'text-emerald-500' : 'text-linera-red'
+                : 'text-gray-400'
+              }`}
           >
             <span className="text-2xl font-bold mb-1">{item.icon}</span>
             <span className="text-[10px] font-mono uppercase font-bold">{item.label}</span>

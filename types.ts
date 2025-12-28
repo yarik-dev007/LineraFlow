@@ -101,6 +101,20 @@ export interface SubscriptionOffer {
   authorChainId?: string;
 }
 
+export interface Post {
+  id: string;
+  author: string;
+  authorChainId: string;
+  title: string;
+  content: string;
+  imageHash: string | null;
+  createdAt: number;
+
+  // Enriched data
+  authorName?: string;
+  authorAvatar?: string;
+}
+
 export enum InteractionState {
   IDLE = 'IDLE',
   HOVER = 'HOVER',
@@ -108,4 +122,4 @@ export enum InteractionState {
   LOADING = 'LOADING'
 }
 
-export type AppView = 'LANDING' | 'EXPLORE' | 'PROFILE' | 'CREATOR_DETAIL' | 'MARKETPLACE';
+export type AppView = 'LANDING' | 'EXPLORE' | 'PROFILE' | 'CREATOR_DETAIL' | 'MARKETPLACE' | 'FEED';
