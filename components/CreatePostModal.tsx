@@ -3,18 +3,26 @@ import { useLinera } from './LineraProvider';
 import { X, Image, Upload } from 'lucide-react';
 import { pb } from './pocketbase';
 
+interface PostData {
+    id?: string;
+    title: string;
+    content: string;
+    imageHash?: string | null;
+}
+
 interface CreatePostModalProps {
     onClose: () => void;
     onSuccess: () => void;
+    initialData?: PostData;
 }
 
-const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess }) => {
+const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess, initialData }) => {
     const { application, accountOwner } = useLinera();
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
+    const [title, setTitle] = useState(initialData?.title || '');
+    const [content, setContent] = useState(initialData?.content || '');
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [uploadStatus, setUploadStatus] = useState('');
-    const [imageHash, setImageHash] = useState<string | null>(null);
+    const [imageHash, setImageHash] = useState<string | null>(initialData?.imageHash || null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Reused upload logic from ProfileEditor/CreateProduct
@@ -68,20 +76,35 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess })
 
         setIsSubmitting(true);
         try {
-            const mutation = `mutation {
-                createPost(
-                    title: "${title}",
-                    content: "${content.replace(/\r?\n/g, "\\n").replace(/"/g, '\\"')}",
-                    imageHash: ${imageHash ? `"${imageHash}"` : 'null'}
-                )
-            }`;
+            let mutation;
+
+            if (initialData?.id) {
+                // UPDATE Mode
+                mutation = `mutation {
+                    updatePost(
+                        postId: "${initialData.id}",
+                        title: "${title}",
+                        content: "${content.replace(/\r?\n/g, "\\n").replace(/"/g, '\\"')}",
+                        imageHash: ${imageHash ? `"${imageHash}"` : 'null'}
+                    )
+                }`;
+            } else {
+                // CREATE Mode
+                mutation = `mutation {
+                    createPost(
+                        title: "${title}",
+                        content: "${content.replace(/\r?\n/g, "\\n").replace(/"/g, '\\"')}",
+                        imageHash: ${imageHash ? `"${imageHash}"` : 'null'}
+                    )
+                }`;
+            }
 
             await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
             onSuccess();
             onClose();
         } catch (err: any) {
-            console.error("Post creation failed:", err);
-            alert(`Failed to create post: ${err.message}`);
+            console.error("Post submission failed:", err);
+            alert(`Failed to submit post: ${err.message}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -92,7 +115,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess })
             <div className="w-full max-w-lg bg-paper-white border-4 border-deep-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] relative">
                 {/* Header */}
                 <div className="bg-deep-black text-white p-4 flex justify-between items-center">
-                    <h2 className="font-display text-xl uppercase tracking-wider">New Transmission</h2>
+                    <h2 className="font-display text-xl uppercase tracking-wider">
+                        {initialData ? 'Edit Transmission' : 'New Transmission'}
+                    </h2>
                     <button onClick={onClose} className="hover:text-linera-red transition-colors">
                         <X className="w-6 h-6" />
                     </button>
@@ -126,7 +151,9 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess })
                     <div className="border-2 border-dashed border-deep-black p-4 bg-gray-50 flex flex-col items-center gap-2">
                         <label className="cursor-pointer flex flex-col items-center gap-2 hover:opacity-70 transition-opacity">
                             <Upload className="w-8 h-8 text-emerald-600" />
-                            <span className="font-mono text-xs font-bold uppercase">Upload Media</span>
+                            <span className="font-mono text-xs font-bold uppercase">
+                                {imageHash ? 'Change Media' : 'Upload Media'}
+                            </span>
                             <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                         </label>
 
@@ -134,6 +161,13 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess })
                             <div className="flex items-center gap-2 text-xs font-mono bg-white border border-deep-black px-2 py-1 mt-2">
                                 <Image className="w-3 h-3" />
                                 <span className="truncate max-w-[200px]">{imageFile.name}</span>
+                            </div>
+                        )}
+
+                        {imageHash && !imageFile && (
+                            <div className="flex items-center gap-2 text-xs font-mono bg-emerald-100 border border-emerald-500 px-2 py-1 mt-2">
+                                <Image className="w-3 h-3 text-emerald-700" />
+                                <span className="truncate max-w-[200px] text-emerald-700">Existing Image Preserved</span>
                             </div>
                         )}
 
@@ -158,7 +192,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess })
                             disabled={isSubmitting || (!!imageFile && !imageHash)}
                             className="flex-1 bg-deep-black text-white font-display uppercase tracking-widest py-3 hover:bg-emerald-600 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                            {isSubmitting ? 'Transmitting...' : 'Post Uplink'}
+                            {isSubmitting ? 'Transmitting...' : (initialData ? 'Update Uplink' : 'Post Uplink')}
                         </button>
                     </div>
                 </form>

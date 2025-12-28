@@ -3,8 +3,9 @@ import { useLinera } from './LineraProvider';
 import { Post, Creator } from '../types';
 import { pb } from './pocketbase';
 import { cacheManager } from '../utils/cacheManager';
-import { MessageCircle, Heart, Share2, Plus } from 'lucide-react';
+import { MessageCircle, Heart, Share2, Plus, Edit, Trash2 } from 'lucide-react';
 import CreatePostModal from './CreatePostModal';
+import RegistrationAlert from './RegistrationAlert';
 
 const Feed: React.FC = () => {
     const { application, accountOwner, subscribeToMyFeed, unsubscribeFromMyFeed } = useLinera();
@@ -12,6 +13,13 @@ const Feed: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [blobUrls, setBlobUrls] = useState<{ [hash: string]: string }>({});
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+    // Edit Mode State
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editingPost, setEditingPost] = useState<Post | null>(null);
+
+    // Registration Check
+    const [showRegistrationAlert, setShowRegistrationAlert] = useState(false);
 
     const [viewMode, setViewMode] = useState<'FEED' | 'MY_POSTS'>('FEED');
 
@@ -202,13 +210,62 @@ const Feed: React.FC = () => {
         };
     }, [application, accountOwner, fetchFeed, subscribeToMyFeed, unsubscribeFromMyFeed]);
 
+    const checkRegistration = async (): Promise<boolean> => {
+        if (!application || !accountOwner) return false;
+        try {
+            const query = `query { profile(owner: "${accountOwner}") { name } }`;
+            const result: any = await application.query(JSON.stringify({ query }));
 
-    // Disconnected State
+            // Check if profile exists (result.data.profile or result.profile should be non-null)
+            const profile = result.data?.profile || result.profile;
+
+            if (!profile) {
+                setShowRegistrationAlert(true);
+                return false;
+            }
+            return true;
+        } catch (e) {
+            console.error("Registration check failed", e);
+            // Assume not registered on error
+            setShowRegistrationAlert(true);
+            return false;
+        }
+    };
+
+    const handleDeletePost = async (post: Post) => {
+        // No confirmation as requested
+        if (!application || !accountOwner) return;
+
+        try {
+            const mutation = `mutation {
+                deletePost(postId: "${post.id}")
+            }`;
+            await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
+            fetchFeed();
+        } catch (err: any) {
+            console.error("Failed to delete post:", err);
+            alert("Failed to delete post.");
+        }
+    };
+
+    const handleEditClick = async (post: Post) => {
+        // Technically strict check not needed for edit if they own the post, but consistent
+        if (await checkRegistration()) {
+            setEditingPost(post);
+            setIsEditModalOpen(true);
+        }
+    };
+
+
+    // Disconnected State - High Contrast
     if (!accountOwner) {
         return (
-            <div className="w-full max-w-2xl mx-auto p-12 text-center border-4 border-gray-100 border-dashed mt-8">
-                <h2 className="font-display text-2xl text-gray-300 uppercase">Wallet Not Connected</h2>
-                <p className="font-mono text-xs text-gray-400 mt-2 mb-6">Connect your wallet to see your personal feed</p>
+            <div className="w-full max-w-2xl mx-auto p-12 text-center border-4 border-deep-black border-dashed mt-8 bg-paper-white shadow-[8px_8px_0px_0px_rgba(0,0,0,0.1)]">
+                <h2 className="font-display text-3xl text-deep-black uppercase mb-4">Wallet Not Connected</h2>
+                <div className="w-16 h-1 bg-emerald-500 mx-auto mb-6"></div>
+                <p className="font-mono text-base text-deep-black font-bold mb-8">
+                    Connect your wallet to access the secured feed network.
+                </p>
             </div>
         );
     }
@@ -229,14 +286,10 @@ const Feed: React.FC = () => {
     };
 
     return (
-
         <>
             <div className="w-full max-w-2xl mx-auto pt-8 pb-24 animate-slide-in relative">
                 <div className="flex items-center justify-between mb-8 border-b-4 border-emerald-500 pb-4">
                     <h1 className="font-display text-4xl uppercase text-deep-black">My Feed</h1>
-                    <span className="bg-emerald-500 text-white font-mono text-xs font-bold px-2 py-1 uppercase">
-                        Live Uplink
-                    </span>
                 </div>
 
                 {/* View Toggles */}
@@ -328,14 +381,26 @@ const Feed: React.FC = () => {
                                 )}
 
                                 {/* Actions Footer */}
-                                <div className="bg-gray-50 p-3 flex gap-6 text-gray-400 border-t-2 border-gray-100">
-                                    <button className="flex items-center gap-2 hover:text-emerald-600 transition-colors">
-                                        <Heart className="w-4 h-4" /> <span className="font-mono text-xs font-bold">Like</span>
-                                    </button>
-                                    <button className="flex items-center gap-2 hover:text-blue-500 transition-colors">
-                                        <Share2 className="w-4 h-4" /> <span className="font-mono text-xs font-bold">Share</span>
-                                    </button>
-                                </div>
+                                {accountOwner === post.author && (
+                                    <div className="bg-gray-50 p-3 flex gap-4 text-gray-400 border-t-2 border-gray-100 justify-end">
+                                        <button
+                                            onClick={() => handleEditClick(post)}
+                                            className="flex items-center gap-2 px-3 py-1 hover:bg-white hover:shadow-sm hover:text-deep-black transition-all border border-transparent hover:border-gray-200"
+                                            title="Edit Post"
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                            <span className="font-mono text-xs font-bold uppercase">Edit</span>
+                                        </button>
+                                        <button
+                                            onClick={() => handleDeletePost(post)}
+                                            className="flex items-center gap-2 px-3 py-1 hover:bg-white hover:shadow-sm hover:text-linera-red transition-all border border-transparent hover:border-gray-200"
+                                            title="Delete Post"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                            <span className="font-mono text-xs font-bold uppercase">Delete</span>
+                                        </button>
+                                    </div>
+                                )}
 
                             </article>
                         ))}
@@ -343,19 +408,46 @@ const Feed: React.FC = () => {
                 )}
             </div>
 
-            {/* FAB - Moved outside container to break out of transform context */}
+            {/* FAB - Adjusted position */}
             <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="fixed bottom-32 right-8 z-50 w-14 h-14 bg-emerald-500 text-white rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-400 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all flex items-center justify-center border-2 border-deep-black"
+                onClick={async () => {
+                    setEditingPost(null);
+                    if (await checkRegistration()) {
+                        setIsCreateModalOpen(true);
+                    }
+                }}
+                className="fixed bottom-12 right-12 z-50 w-14 h-14 bg-emerald-500 text-white rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-400 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all flex items-center justify-center border-2 border-deep-black"
                 title="Create Post"
             >
                 <Plus className="w-8 h-8" />
             </button>
 
+            {/* Create Post Modal */}
             {isCreateModalOpen && (
                 <CreatePostModal
                     onClose={() => setIsCreateModalOpen(false)}
                     onSuccess={handlePostCreated}
+                // No initialData means CREATE mode
+                />
+            )}
+
+            {/* Edit Post Modal */}
+            {isEditModalOpen && editingPost && (
+                <CreatePostModal
+                    onClose={() => {
+                        setIsEditModalOpen(false);
+                        setEditingPost(null);
+                    }}
+                    onSuccess={handlePostCreated}
+                    initialData={editingPost}
+                />
+            )}
+
+            {/* Registration Alert */}
+            {showRegistrationAlert && (
+                <RegistrationAlert
+                    onClose={() => setShowRegistrationAlert(false)}
+                    onInitialize={() => setShowRegistrationAlert(false)} // User must navigate manually for now
                 />
             )}
         </>
