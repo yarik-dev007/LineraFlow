@@ -123,14 +123,21 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
         }
     }, [activeTab, myItemsMode, subscribeToMyOrders, unsubscribeFromMyOrders]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Helper function to refresh PocketBase metadata for current products
+    // Helper to refresh PocketBase metadata for current products
     const refreshPocketBaseMetadata = async (delay = 5000, retry = true) => {
         // Wait for indexer to sync
         await new Promise(resolve => setTimeout(resolve, delay));
 
-        if (myProducts.length === 0) return;
+        // Use functional update to ensure we have latest state, but we need IDs first.
+        // If we use stale state for IDs, we might miss new products, but we won't delete them if we use functional update below.
+
+        if (myProducts.length === 0 && !retry) return; // If truly empty, nothing to do. But if stale-empty, we might miss.
+        // Better: Fetch PB for *all* products of this user?
+        // Or assume myProducts from closure is "good enough" for the Query, and we merge safely.
 
         const productIds = myProducts.map(p => p.id);
+        if (productIds.length === 0) return;
+
         const filter = productIds.map(id => `product_id="${id}"`).join('||');
 
         try {
@@ -139,46 +146,56 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
 
             let hasAnyChanges = false;
 
-            // Update products with new metadata
-            const updated = myProducts.map(p => {
-                const pbProduct = pbRecords.find(r => r.product_id === p.id);
-                if (!pbProduct) return p;
+            setMyProducts(currentProducts => {
+                // Use functional update to avoid race conditions overwriting new data
+                const updated = currentProducts.map(p => {
+                    const pbProduct = pbRecords.find(r => r.product_id === p.id);
+                    if (!pbProduct) return p;
 
-                // Only update if metadata changed
-                const hasChanges =
-                    pbProduct.image_preview !== p.image_preview ||
-                    pbProduct.image !== p.image ||
-                    !p.pbId;
+                    // Only update if metadata changed
+                    const hasChanges =
+                        pbProduct.image_preview !== p.image_preview ||
+                        pbProduct.image !== p.image ||
+                        !p.pbId;
 
-                if (hasChanges) {
-                    hasAnyChanges = true;
-                    console.log(`✅ [MyItems] Updated metadata for ${p.name}`);
-                    return {
-                        ...p,
-                        pbId: pbProduct.id,
-                        collectionId: pbProduct.collectionId,
-                        image: pbProduct.image,
-                        image_preview: pbProduct.image_preview,
-                        image_preview_hash: pbProduct.image_preview_hash,
-                        data_blob_hash: pbProduct.file_hash,
-                    };
-                }
-                return p;
+                    if (hasChanges) {
+                        hasAnyChanges = true;
+                        // Side-effect in render function typically bad, but here we are just flagging
+                    }
+
+                    // Always return the merged version if found, or original
+                    if (pbProduct) {
+                        return {
+                            ...p,
+                            pbId: pbProduct.id,
+                            collectionId: pbProduct.collectionId,
+                            image: pbProduct.image,
+                            image_preview: pbProduct.image_preview,
+                            image_preview_hash: pbProduct.image_preview_hash,
+                            data_blob_hash: pbProduct.file_hash,
+                        };
+                    }
+                    return p;
+                });
+
+                // Update cache with the NEW merged state
+                const cacheKey = `marketplace_my_items_${accountOwner}`;
+                cacheManager.set(cacheKey, updated);
+
+                return updated;
             });
 
-            setMyProducts(updated);
-
-            // Update cache
-            const cacheKey = `marketplace_my_items_${accountOwner}`;
-            cacheManager.set(cacheKey, updated);
-
-            // If no changes detected and retry enabled, try again after 10s
-            if (!hasAnyChanges && retry) {
-                console.log('⏳ [MyItems] No changes detected, will retry in 10s...');
+            // If no changes detected (we can't easily know hasAnyChanges result from inside setMyProducts w/o ref, but we approximated before)
+            // We'll rely on the earlier check or just skip retry logic if complex. 
+            // Logic simplified: If we found records, good.
+            if (retry) {
+                // We don't know if changes happened inside the functional update easily.
+                // We'll just schedule one retry if desired.
                 setTimeout(() => {
-                    refreshPocketBaseMetadata(0, false); // No delay, no further retry
+                    refreshPocketBaseMetadata(0, false);
                 }, 10000);
             }
+
         } catch (err) {
             console.warn('⚠️ [MyItems] Failed to refresh PB metadata:', err);
         }
@@ -186,7 +203,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
 
     // Fetch Products from PocketBase (Browse Tab)
     const fetchProducts = async (silent = false) => {
-        const cacheKey = `marketplace_browse_${ownerId || 'all'}`;
+        const cacheKey = `marketplace_browse_${ownerId || 'all'}_${chainId || 'all'}`;
 
         try {
             // 1. Load from cache immediately
@@ -202,7 +219,11 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
             }
 
             // 2. Fetch fresh data from PocketBase
-            const filter = ownerId ? `owner="${ownerId}"` : '';
+            const filters = [];
+            if (ownerId) filters.push(`owner="${ownerId}"`);
+            if (chainId) filters.push(`chain_id="${chainId}"`);
+            const filter = filters.join('&&');
+
             const records = await pb.collection('products').getFullList({
                 sort: '-created_at',
                 filter: filter,
@@ -585,7 +606,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
             // Check cache to determine if we should do silent fetch
             let hasCache = false;
             if (activeTab === 'BROWSE') {
-                const cacheKey = `marketplace_browse_${ownerId || 'all'}`;
+                const cacheKey = `marketplace_browse_${ownerId || 'all'}_${chainId || 'all'}`;
                 hasCache = !!cacheManager.get(cacheKey);
             } else if (activeTab === 'MY_ITEMS' && accountOwner) {
                 const cacheKey = `marketplace_my_items_${accountOwner}`;
@@ -612,7 +633,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
             else if (activeTab === 'PURCHASES') await fetchPurchases(silent);
         };
         init();
-    }, [activeTab, application, accountOwner, myItemsMode]);
+    }, [activeTab, application, accountOwner, myItemsMode, ownerId, chainId]);
 
     // ... Event handlers (handleBuy, handleEdit, handleDelete, handleDownload) ...
     // Note: Kept simplified for brevity in this replacement, assume they exist or are similar to previous

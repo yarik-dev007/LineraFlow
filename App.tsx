@@ -306,6 +306,7 @@ const AppContent: React.FC = () => {
                 <Route path="/profile" element={
                   <div className="flex items-start justify-center h-full">
                     <ProfileEditor
+                      key={accountOwner}
                       initialProfile={profile}
                       onSave={handleSaveProfile}
                       donations={myDonations}

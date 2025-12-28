@@ -14,7 +14,9 @@ export interface UserProfile {
     instagram: string;
     youtube: string;
     tiktok: string;
-  }
+  },
+  avatarHash?: string;
+  headerHash?: string;
 }
 
 export interface Creator {

@@ -17,11 +17,10 @@ const MAIN_CHAIN_ID = import.meta.env.VITE_LINERA_MAIN_CHAIN_ID;
 const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, donations = [] }) => {
     const { application, accountOwner, balances, chainId } = useLinera();
     const [mode, setMode] = useState<'VIEW' | 'EDIT' | 'SUBSCRIPTION'>('VIEW');
-    const [profile, setProfile] = useState<UserProfile>(initialProfile);
+    // profile state moved to lazy initializer below
     const [isGenerating, setIsGenerating] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [hasProfile, setHasProfile] = useState(false);
 
     // Subscription State
     const [subscriptionPrice, setSubscriptionPrice] = useState('');
@@ -29,9 +28,31 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
 
     // Image upload state
     const [avatarFile, setAvatarFile] = useState<File | null>(null);
-    const [avatarHash, setAvatarHash] = useState('');
     const [headerFile, setHeaderFile] = useState<File | null>(null);
-    const [headerHash, setHeaderHash] = useState('');
+
+    // Lazy initialization from cache to prevent FOUC (Flash of Unstyled Content)
+    const [profile, setProfile] = useState<UserProfile>(() => {
+        if (!accountOwner) return initialProfile;
+        const cached = cacheManager.get<UserProfile>(`profile_${accountOwner}`);
+        return cached || initialProfile;
+    });
+
+    const [avatarHash, setAvatarHash] = useState<string | null>(() => {
+        if (!accountOwner) return null;
+        const cached = cacheManager.get<UserProfile>(`profile_${accountOwner}`);
+        return cached?.avatarHash || (cached as any)?.avatar_hash || null;
+    });
+
+    const [headerHash, setHeaderHash] = useState<string | null>(() => {
+        if (!accountOwner) return null;
+        const cached = cacheManager.get<UserProfile>(`profile_${accountOwner}`);
+        return cached?.headerHash || (cached as any)?.header_hash || null;
+    });
+
+    const [hasProfile, setHasProfile] = useState(() => {
+        if (!accountOwner) return false;
+        return !!cacheManager.get<UserProfile>(`profile_${accountOwner}`);
+    });
     const [uploadStatus, setUploadStatus] = useState<string>('');
     const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
 
@@ -64,12 +85,16 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
 
 
             const cacheKey = `profile_${accountOwner}`;
-            // ... (rest of function)
+
+            // 1. Load from cache
             const cached = cacheManager.get<UserProfile>(cacheKey);
             if (cached) {
                 console.log(`📦 [Profile] Loaded from cache`);
                 setProfile(cached);
                 setHasProfile(true);
+                // Restore hashes from cache
+                if (cached.avatarHash) setAvatarHash(cached.avatarHash);
+                if (cached.headerHash) setHeaderHash(cached.headerHash);
                 setIsLoading(false);
             } else {
                 setIsLoading(true);
@@ -111,28 +136,36 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                         });
                     }
 
+                    // Construct comprehensive profile object from Chain Data
                     const freshProfile: UserProfile = {
                         displayName: profileData.name || '',
                         bio: profileData.bio || '',
-                        socials: socialsMap
+                        socials: socialsMap,
+                        avatarHash: profileData.avatarHash || profileData.avatar_hash || '',
+                        headerHash: profileData.headerHash || profileData.header_hash || ''
                     };
 
-                    // Set image hashes (still useful for edit mode)
-                    if (profileData.avatarHash) setAvatarHash(profileData.avatarHash);
-                    if (profileData.headerHash) setHeaderHash(profileData.headerHash);
+                    // Update local state hashes from Chain Data (Source of Truth)
+                    if (profileData.avatarHash || profileData.avatar_hash) setAvatarHash(profileData.avatarHash || profileData.avatar_hash);
+                    if (profileData.headerHash || profileData.header_hash) setHeaderHash(profileData.headerHash || profileData.header_hash);
 
-                    // 3. Update only if different from cache
+                    // 3. Update state and cache ONLY if different
+                    // Now includes hashes in comparison!
                     const isDifferent = JSON.stringify(freshProfile) !== JSON.stringify(cached);
+
                     if (isDifferent || !cached) {
-                        console.log(`✅ [Profile] ${isDifferent ? 'Updated' : 'Same'}`);
+                        console.log(`✅ [Profile] Data Updated from Chain`);
                         setProfile(freshProfile);
                         cacheManager.set(cacheKey, freshProfile);
+                    } else {
+                        console.log(`✅ [Profile] Data Synced`);
                     }
                 } else {
                     setHasProfile(false);
                 }
             } catch (error) {
-                // Silent error handling
+                // Silent error handling - keep cache
+                console.warn("Profile fetch failed, using cache", error);
             } finally {
                 setIsLoading(false);
             }
@@ -275,6 +308,21 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
 
             // For user-initiated mutations, use MetaMask owner
             await application.query(JSON.stringify({ query: mutation }), { owner: accountOwner });
+
+            // OPTIMISTIC CACHE UPDATE
+            // Immediately update the cache with the new data so user sees it on next reload/navigation
+            const profileToCache: UserProfile = {
+                ...profile,
+                avatarHash: avatarHash,
+                headerHash: headerHash
+            };
+            const cacheKey = `profile_${accountOwner}`;
+            cacheManager.set(cacheKey, profileToCache);
+
+            // Set timestamp for lag protection
+            localStorage.setItem(`profile_last_update_${accountOwner}`, Date.now().toString());
+
+            console.log("💾 [Profile] Cache updated optimistically after save");
 
             setHasProfile(true);
             onSave(profile);

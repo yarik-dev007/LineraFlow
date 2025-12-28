@@ -24,12 +24,14 @@ const Feed: React.FC = () => {
     const [viewMode, setViewMode] = useState<'FEED' | 'MY_POSTS'>('FEED');
 
     // Helper to fetch blobs
-    const fetchBlobs = useCallback(async (hashes: string[], currentPosts: Post[]) => {
+    const fetchBlobs = useCallback(async (hashes: string[]) => {
         if (!application) return;
 
         const newUrls: { [h: string]: string } = {};
 
         for (const hash of hashes) {
+            // Check if we already have it in the LATEST state (passed via argument or valid heuristic)
+            // But here we rely on the component state check before calling
             try {
                 // 1. Check cache first
                 const cacheKey = `blob_${hash}`;
@@ -40,7 +42,7 @@ const Feed: React.FC = () => {
                     continue;
                 }
 
-                // 2. Fetch from chain if not cached
+                // 2. Fetch from chain
                 const query = `query { dataBlob(hash: "${hash}") } `;
                 const result: any = await application.query(JSON.stringify({ query }));
 
@@ -55,7 +57,6 @@ const Feed: React.FC = () => {
                 }
 
                 if (bytes) {
-                    // Convert to Base64 Data URI for caching
                     const u8arr = new Uint8Array(bytes);
                     let binary = '';
                     const len = u8arr.byteLength;
@@ -63,11 +64,9 @@ const Feed: React.FC = () => {
                         binary += String.fromCharCode(u8arr[i]);
                     }
                     const base64 = window.btoa(binary);
-                    const dataUrl = `data:image/jpeg;base64,${base64}`; // Assuming jpeg, could attempt detection
+                    const dataUrl = `data:image/jpeg;base64,${base64}`;
 
-                    // Save to cache
                     cacheManager.set(cacheKey, dataUrl);
-
                     newUrls[hash] = dataUrl;
                 }
             } catch (e) {
@@ -75,7 +74,9 @@ const Feed: React.FC = () => {
             }
         }
 
-        setBlobUrls(prev => ({ ...prev, ...newUrls }));
+        if (Object.keys(newUrls).length > 0) {
+            setBlobUrls(prev => ({ ...prev, ...newUrls }));
+        }
     }, [application]);
 
     // Fetch Feed
@@ -179,13 +180,14 @@ const Feed: React.FC = () => {
 
             // 4. Fetch Blobs (Images)
             // We'll fetch them individually to avoid blocking the UI, but here we just map hashes
-            const hashesToFetch = mappedPosts
-                .filter(p => p.imageHash && !blobUrls[p.imageHash])
-                .map(p => p.imageHash!);
+            // This logic is now moved to a separate useEffect
+            // const hashesToFetch = mappedPosts
+            //     .filter(p => p.imageHash && !blobUrls[p.imageHash])
+            //     .map(p => p.imageHash!);
 
-            if (hashesToFetch.length > 0) {
-                fetchBlobs(hashesToFetch, mappedPosts);
-            }
+            // if (hashesToFetch.length > 0) {
+            //     fetchBlobs(hashesToFetch, mappedPosts);
+            // }
 
             setPosts(mappedPosts);
         } catch (err) {
@@ -193,7 +195,23 @@ const Feed: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [application, accountOwner, blobUrls, fetchBlobs, viewMode]);
+    }, [application, accountOwner, viewMode]); // Removed blobUrls and fetchBlobs
+
+    // Separate effect for fetching images when posts change
+    useEffect(() => {
+        if (posts.length === 0) return;
+
+        const hashesToFetch = posts
+            .filter(p => p.imageHash && !blobUrls[p.imageHash])
+            .map(p => p.imageHash!);
+
+        if (hashesToFetch.length > 0) {
+            // Deduplicate hashes
+            const uniqueHashes = [...new Set(hashesToFetch)];
+            fetchBlobs(uniqueHashes);
+        }
+    }, [posts, blobUrls, fetchBlobs]);
+
 
     useEffect(() => {
         // Initial fetch
@@ -216,10 +234,20 @@ const Feed: React.FC = () => {
             const query = `query { profile(owner: "${accountOwner}") { name } }`;
             const result: any = await application.query(JSON.stringify({ query }));
 
-            // Check if profile exists (result.data.profile or result.profile should be non-null)
-            const profile = result.data?.profile || result.profile;
+            let data = result;
+            if (typeof result === 'string') {
+                try {
+                    data = JSON.parse(result);
+                } catch (e) {
+                    console.error("Failed to parse registration check result", e);
+                    return false;
+                }
+            }
 
-            if (!profile) {
+            // Check if profile exists and has a name
+            const profile = data?.data?.profile || data?.profile;
+
+            if (!profile || !profile.name) {
                 setShowRegistrationAlert(true);
                 return false;
             }
