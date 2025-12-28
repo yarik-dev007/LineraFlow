@@ -29,6 +29,7 @@ echo ">>> Configuring Firewall..."
 sudo ufw allow OpenSSH
 sudo ufw allow "Nginx Full"
 sudo ufw allow 8090/tcp # Allow external access to PocketBase port if needed, but we will proxy via Nginx
+sudo ufw allow 8077/tcp # Allow external access to Blob Server
 sudo ufw --force enable
 
 # =========================
@@ -37,13 +38,14 @@ sudo ufw --force enable
 # =========================
 # ENVIRONMENT CONFIG
 # =========================
-echo ">>> Generating .env file..."
-cat > "$WORK_DIR/.env" <<EOF
-VITE_LINERA_FAUCET_URL=https://faucet.testnet-conway.linera.net
-VITE_LINERA_APPLICATION_ID=a2376c5a0cc2e471078462f22eacca74d1ca8849dd09dbc47cb0e5da5e06fb89
-VITE_LINERA_MAIN_CHAIN_ID=bdbf434aa7a91c5696b142a32028361ee988175e1da207c26fcd06b3e0205eb8
-VITE_POCKETBASE_URL=https://$DOMAIN:8090
-EOF
+# echo ">>> Generating .env file..."
+# Skipped to preserve existing environment variables
+# cat > "$WORK_DIR/.env" <<EOF
+# VITE_LINERA_FAUCET_URL=https://faucet.testnet-conway.linera.net
+# VITE_LINERA_APPLICATION_ID=a2376c5a0cc2e471078462f22eacca74d1ca8849dd09dbc47cb0e5da5e06fb89
+# VITE_LINERA_MAIN_CHAIN_ID=bdbf434aa7a91c5696b142a32028361ee988175e1da207c26fcd06b3e0205eb8
+# VITE_POCKETBASE_URL=https://$DOMAIN:8090
+# EOF
 
 echo ">>> Building frontend..."
 cd "$WORK_DIR"
@@ -89,6 +91,29 @@ EOF"
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now pocketbase
+
+echo ">>> Setting up Blob Server..."
+# Create Systemd Service for Blob Server
+sudo bash -c "cat > /etc/systemd/system/linera-blob-server.service <<EOF
+[Unit]
+Description=Linera Blob Server
+After=network.target
+
+[Service]
+User=$RUN_USER
+Group=$RUN_USER
+WorkingDirectory=$WORK_DIR
+ExecStart=/usr/bin/node $WORK_DIR/server.js
+Restart=always
+RestartSec=5
+Environment=PORT=8077
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now linera-blob-server
 
 # =========================
 # NGINX CONFIG
@@ -169,6 +194,19 @@ server {
         add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
         add_header Cross-Origin-Resource-Policy \"same-origin\" always;
         add_header Cache-Control \"public, max-age=31536000, immutable\";
+    }
+
+    # Blob Server Proxy
+    location /upload {
+        proxy_pass http://127.0.0.1:8077;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 50M;
     }
 
     # SPA Fallback
@@ -343,6 +381,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/lineraflow.xyz/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+
 
     location / {
         # Let PocketBase handle CORS - don't add headers here to avoid duplicates
