@@ -35,6 +35,8 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
     const [uploadStatus, setUploadStatus] = useState<string>('');
     const [activeUploadId, setActiveUploadId] = useState<string | null>(null);
 
+    const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
     // Fetch Profile on Mount and when balance changes (indicating new blocks)
     useEffect(() => {
         const fetchProfile = async () => {
@@ -47,14 +49,22 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                     setSubscriptionPrice(sub.price.toString());
                     setSubscriptionDescription(sub.description);
                 }
+            } catch (e) { }
+
+            // Fetch Avatar from PB (User Request: "only avatar from DB searching by owner")
+            try {
+                const pbProfile = await pb.collection('profiles').getFirstListItem(`owner="${accountOwner}"`);
+                if (pbProfile && pbProfile.avatar_file) {
+                    const url = pb.files.getUrl(pbProfile, pbProfile.avatar_file);
+                    setAvatarUrl(url);
+                }
             } catch (e) {
-                // No subscription found
+                // No PB profile or avatar
             }
 
 
             const cacheKey = `profile_${accountOwner}`;
-
-            // 1. Load from cache immediately
+            // ... (rest of function)
             const cached = cacheManager.get<UserProfile>(cacheKey);
             if (cached) {
                 console.log(`📦 [Profile] Loaded from cache`);
@@ -107,7 +117,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                         socials: socialsMap
                     };
 
-                    // Set image hashes
+                    // Set image hashes (still useful for edit mode)
                     if (profileData.avatarHash) setAvatarHash(profileData.avatarHash);
                     if (profileData.headerHash) setHeaderHash(profileData.headerHash);
 
@@ -330,12 +340,16 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                     </div>
 
                     <div className="p-6 md:p-12 flex flex-col md:flex-row gap-8 md:gap-12">
-                        {/* Avatar Placeholder */}
+                        {/* Avatar */}
                         <div className="shrink-0 self-center md:self-start">
-                            <div className="w-32 h-32 md:w-40 md:h-40 bg-deep-black border-4 border-deep-black flex items-center justify-center">
-                                <span className="font-display text-4xl md:text-6xl text-white">
-                                    {profile.displayName ? profile.displayName.substring(0, 1).toUpperCase() : '?'}
-                                </span>
+                            <div className="w-32 h-32 md:w-40 md:h-40 bg-deep-black border-4 border-deep-black flex items-center justify-center overflow-hidden relative">
+                                {avatarUrl ? (
+                                    <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                ) : (
+                                    <span className="font-display text-4xl md:text-6xl text-white">
+                                        {profile.displayName ? profile.displayName.substring(0, 1).toUpperCase() : '?'}
+                                    </span>
+                                )}
                             </div>
                         </div>
 

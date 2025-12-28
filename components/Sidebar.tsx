@@ -43,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setView, wallet, onToggl
                 flex items-center px-6 py-4 transition-all duration-200
                 ${currentView === item.id
                   ? item.id === 'FEED'
-                    ? 'bg-emerald-500 text-white font-bold translate-x-2 shadow-[4px_4px_0px_0px_#000]'
+                    ? 'bg-white text-deep-black font-bold translate-x-2 shadow-[4px_4px_0px_0px_#10B981]'
                     : 'bg-white text-deep-black font-bold translate-x-2 shadow-[4px_4px_0px_0px_#FF4438]'
                   : 'hover:bg-white/10 text-gray-300 hover:text-white'}
               `}

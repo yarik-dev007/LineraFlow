@@ -392,9 +392,9 @@ impl Contract for DonationsContract {
                 let author_chain_id = target_account_norm.chain_id;
                 self.runtime.transfer(owner, target_account_norm, amount);
                 
-                // Subscription duration (5 minutes for testing)
-                const FIVE_MINUTES_MICROS: u64 = 5 * 60 * 1_000_000;
-                let end_timestamp = ts + FIVE_MINUTES_MICROS;
+                // Subscription duration (30 days)
+                const THIRTY_DAYS_MICROS: u64 = 30 * 24 * 60 * 60 * 1_000_000;
+                let end_timestamp = ts + THIRTY_DAYS_MICROS;
                 let subscriber_chain_id = self.runtime.chain_id();
                 let sub_id = format!("sub-{}-{}-{}", subscriber, author, ts);
                 
@@ -419,7 +419,7 @@ impl Contract for DonationsContract {
                         subscriber_chain_id: subscriber_chain_id.to_string(),
                         author,
                         amount,
-                        duration_micros: FIVE_MINUTES_MICROS,
+                        duration_micros: THIRTY_DAYS_MICROS,
                         timestamp: ts,
                     }).with_authentication().send_to(author_chain_id);
                 }

@@ -2,15 +2,18 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLinera } from './LineraProvider';
 import { Post, Creator } from '../types';
 import { pb } from './pocketbase';
+import { cacheManager } from '../utils/cacheManager';
 import { MessageCircle, Heart, Share2, Plus } from 'lucide-react';
 import CreatePostModal from './CreatePostModal';
 
 const Feed: React.FC = () => {
-    const { application, accountOwner } = useLinera();
+    const { application, accountOwner, subscribeToMyFeed, unsubscribeFromMyFeed } = useLinera();
     const [posts, setPosts] = useState<Post[]>([]);
     const [loading, setLoading] = useState(true);
     const [blobUrls, setBlobUrls] = useState<{ [hash: string]: string }>({});
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+    const [viewMode, setViewMode] = useState<'FEED' | 'MY_POSTS'>('FEED');
 
     // Helper to fetch blobs
     const fetchBlobs = useCallback(async (hashes: string[], currentPosts: Post[]) => {
@@ -20,12 +23,16 @@ const Feed: React.FC = () => {
 
         for (const hash of hashes) {
             try {
-                // GraphQL query to read blob
-                // Note: The service needs to support `dataBlob(hash: String)` query
-                // Based on lib.rs review, ensure service.rs has this. 
-                // Wait, service.rs had `readDataBlob` mutation, but queries?
-                // Checking previous analysis: service.rs has `data_blob(hash: String) -> Option<Vec<u8>>`
+                // 1. Check cache first
+                const cacheKey = `blob_${hash}`;
+                const cachedDataUrl = cacheManager.get<string>(cacheKey);
 
+                if (cachedDataUrl) {
+                    newUrls[hash] = cachedDataUrl;
+                    continue;
+                }
+
+                // 2. Fetch from chain if not cached
                 const query = `query { dataBlob(hash: "${hash}") } `;
                 const result: any = await application.query(JSON.stringify({ query }));
 
@@ -40,12 +47,20 @@ const Feed: React.FC = () => {
                 }
 
                 if (bytes) {
+                    // Convert to Base64 Data URI for caching
                     const u8arr = new Uint8Array(bytes);
-                    const blob = new Blob([u8arr], { type: 'image/jpeg' }); // Assume JPEG or detect?
-                    // Typically we don't know mime type from just hash unless we stored it. 
-                    // Using generic blob or assuming common types.
-                    const url = URL.createObjectURL(blob);
-                    newUrls[hash] = url;
+                    let binary = '';
+                    const len = u8arr.byteLength;
+                    for (let i = 0; i < len; i++) {
+                        binary += String.fromCharCode(u8arr[i]);
+                    }
+                    const base64 = window.btoa(binary);
+                    const dataUrl = `data:image/jpeg;base64,${base64}`; // Assuming jpeg, could attempt detection
+
+                    // Save to cache
+                    cacheManager.set(cacheKey, dataUrl);
+
+                    newUrls[hash] = dataUrl;
                 }
             } catch (e) {
                 console.error(`Failed to load blob ${hash} `, e);
@@ -60,8 +75,23 @@ const Feed: React.FC = () => {
         if (!application || !accountOwner) return;
         setLoading(true);
         try {
-            // 1. Fetch posts from chain
-            const query = `query {
+            // 1. Fetch posts from chain based on View Mode
+            let query;
+
+            if (viewMode === 'MY_POSTS') {
+                query = `query {
+    postsByAuthor(author: "${accountOwner}") {
+        id
+        author
+        authorChainId
+        title
+        content
+        imageHash
+        createdAt
+    }
+} `;
+            } else {
+                query = `query {
     myFeed(subscriber: "${accountOwner}") {
         id
         author
@@ -72,17 +102,32 @@ const Feed: React.FC = () => {
         createdAt
     }
 } `;
+            }
+
+            console.log(`📨 [Feed-DEBUG] Fetching ${viewMode}... Query:`, query);
             const result: any = await application.query(JSON.stringify({ query }));
+            console.log(`📬 [Feed-DEBUG] ${viewMode} Response:`, result);
             let rawPosts: any[] = [];
 
             // Handle different response structures
-            if (result.data?.myFeed) rawPosts = result.data.myFeed;
-            else if (result.myFeed) rawPosts = result.myFeed;
-            else if (typeof result === 'string') {
-                try {
-                    const parsed = JSON.parse(result);
-                    rawPosts = parsed.data?.myFeed || parsed.myFeed || [];
-                } catch (e) { }
+            if (viewMode === 'MY_POSTS') {
+                if (result.data?.postsByAuthor) rawPosts = result.data.postsByAuthor;
+                else if (result.postsByAuthor) rawPosts = result.postsByAuthor;
+                else if (typeof result === 'string') {
+                    try {
+                        const parsed = JSON.parse(result);
+                        rawPosts = parsed.data?.postsByAuthor || parsed.postsByAuthor || [];
+                    } catch (e) { }
+                }
+            } else {
+                if (result.data?.myFeed) rawPosts = result.data.myFeed;
+                else if (result.myFeed) rawPosts = result.myFeed;
+                else if (typeof result === 'string') {
+                    try {
+                        const parsed = JSON.parse(result);
+                        rawPosts = parsed.data?.myFeed || parsed.myFeed || [];
+                    } catch (e) { }
+                }
             }
 
             if (!rawPosts || rawPosts.length === 0) {
@@ -121,6 +166,9 @@ const Feed: React.FC = () => {
                 };
             });
 
+            // Sort by createdAt desc (if not already)
+            mappedPosts.sort((a, b) => b.createdAt - a.createdAt);
+
             // 4. Fetch Blobs (Images)
             // We'll fetch them individually to avoid blocking the UI, but here we just map hashes
             const hashesToFetch = mappedPosts
@@ -137,12 +185,33 @@ const Feed: React.FC = () => {
         } finally {
             setLoading(false);
         }
-    }, [application, accountOwner, blobUrls, fetchBlobs]);
+    }, [application, accountOwner, blobUrls, fetchBlobs, viewMode]);
 
     useEffect(() => {
+        // Initial fetch
         fetchFeed();
-    }, [application, accountOwner, fetchFeed]);
 
+        // Subscription for real-time updates
+        subscribeToMyFeed(() => {
+            console.log("🔔 [Feed] New content notification");
+            fetchFeed();
+        });
+
+        return () => {
+            unsubscribeFromMyFeed();
+        };
+    }, [application, accountOwner, fetchFeed, subscribeToMyFeed, unsubscribeFromMyFeed]);
+
+
+    // Disconnected State
+    if (!accountOwner) {
+        return (
+            <div className="w-full max-w-2xl mx-auto p-12 text-center border-4 border-gray-100 border-dashed mt-8">
+                <h2 className="font-display text-2xl text-gray-300 uppercase">Wallet Not Connected</h2>
+                <p className="font-mono text-xs text-gray-400 mt-2 mb-6">Connect your wallet to see your personal feed</p>
+            </div>
+        );
+    }
 
     // Initial loading state only
     if (loading && posts.length === 0) {
@@ -168,6 +237,28 @@ const Feed: React.FC = () => {
                     <span className="bg-emerald-500 text-white font-mono text-xs font-bold px-2 py-1 uppercase">
                         Live Uplink
                     </span>
+                </div>
+
+                {/* View Toggles */}
+                <div className="flex gap-4 mb-8">
+                    <button
+                        onClick={() => setViewMode('FEED')}
+                        className={`font-mono text-sm font-bold px-4 py-2 uppercase border-2 transition-all ${viewMode === 'FEED'
+                            ? 'bg-deep-black text-white border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)]'
+                            : 'bg-white text-deep-black border-deep-black hover:bg-gray-50'
+                            }`}
+                    >
+                        Following
+                    </button>
+                    <button
+                        onClick={() => setViewMode('MY_POSTS')}
+                        className={`font-mono text-sm font-bold px-4 py-2 uppercase border-2 transition-all ${viewMode === 'MY_POSTS'
+                            ? 'bg-deep-black text-white border-deep-black shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)]'
+                            : 'bg-white text-deep-black border-deep-black hover:bg-gray-50'
+                            }`}
+                    >
+                        My Posts
+                    </button>
                 </div>
 
                 {posts.length === 0 ? (
@@ -255,7 +346,7 @@ const Feed: React.FC = () => {
             {/* FAB - Moved outside container to break out of transform context */}
             <button
                 onClick={() => setIsCreateModalOpen(true)}
-                className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-emerald-500 text-white rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-400 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all flex items-center justify-center border-2 border-deep-black"
+                className="fixed bottom-32 right-8 z-50 w-14 h-14 bg-emerald-500 text-white rounded-full shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-400 hover:shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all flex items-center justify-center border-2 border-deep-black"
                 title="Create Post"
             >
                 <Plus className="w-8 h-8" />
