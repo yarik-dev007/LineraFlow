@@ -37,7 +37,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess, i
         reader.onload = async () => {
             try {
                 // Using the specific upload endpoint for raw blobs
-                const response = await fetch('http://localhost:8070/upload', {
+                const response = await fetch(import.meta.env.VITE_BLOB_SERVER_URL || '/upload', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

@@ -214,7 +214,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
         const reader = new FileReader();
         reader.onload = async () => {
             try {
-                const response = await fetch('http://localhost:8070/upload', {
+                const response = await fetch(import.meta.env.VITE_BLOB_SERVER_URL || '/upload', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({

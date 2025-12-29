@@ -17,7 +17,7 @@ const LINERA_CHAIN_ID = process.env.VITE_LINERA_MAIN_CHAIN_ID || 'fcc99b4e4c6be2
 const LINERA_APP_ID = process.env.VITE_LINERA_APPLICATION_ID || 'a205b6233965c4d98d9f36dd11e1ff10693a864eb9d53d800b8cd463996d50b6';
 const LINERA_NODE_URL = `http://localhost:7071`;
 const LINERA_WS_URL = `ws://localhost:7071/ws`;
-const POCKETBASE_URL = 'http://127.0.0.1:8090';
+const POCKETBASE_URL = process.env.VITE_POCKETBASE_URL_INTERNAL || 'http://127.0.0.1:8091';
 
 console.log(`🚀 Config: Chain=${LINERA_CHAIN_ID.substring(0, 8)}, App=${LINERA_APP_ID.substring(0, 8)}`);
 
@@ -28,6 +28,13 @@ pb.autoCancellation(false);
 // Sync status
 let isSyncing = false;
 let pendingSync = false;
+
+function logPbError(context, err) {
+    console.error(`❌ [${context}] Error:`, err.message);
+    if (err.status) console.error(`   Status:`, err.status);
+    if (err.data) console.error(`   Data:`, JSON.stringify(err.data, null, 2));
+    if (err.originalError) console.error(`   Original:`, err.originalError);
+}
 
 async function fetchGraphQL(query, variables = {}) {
     const url = `${LINERA_NODE_URL}/chains/${LINERA_CHAIN_ID}/applications/${LINERA_APP_ID}`;
@@ -140,7 +147,7 @@ async function syncProfiles() {
             }
         }
     } catch (e) {
-        console.error('❌ Error syncing profiles:', e.message);
+        logPbError('Profiles', e);
     }
 }
 
@@ -195,7 +202,7 @@ async function syncDonations() {
             }
         }
     } catch (e) {
-        console.error('❌ Error syncing donations:', e.message);
+        logPbError('Donations', e);
     }
 }
 
@@ -307,7 +314,7 @@ async function syncProducts() {
             }
         }
     } catch (e) {
-        console.error('❌ Error syncing products:', e.message);
+        logPbError('Products', e);
     }
 }
 
@@ -373,7 +380,7 @@ async function syncSubscriptions() {
             }
         }
     } catch (e) {
-        console.error('❗ Error syncing subscriptions:', e.message);
+        logPbError('Subscriptions', e);
     }
 }
 

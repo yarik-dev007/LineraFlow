@@ -103,8 +103,16 @@ const Marketplace: React.FC<MarketplaceProps> = ({ chainId, currentUserAddress }
                 fetchProductsRef.current?.(true); // Silent refresh
             });
 
+            // Handle real-time event from App.tsx
+            const handleRefresh = (e: any) => {
+                console.log('🔔 [Marketplace] PB refresh products triggered:', e.detail.action);
+                fetchProductsRef.current?.(true);
+            };
+            window.addEventListener('pb-refresh-products', handleRefresh);
+
             return () => {
                 unsubscribeFromMarketplace();
+                window.removeEventListener('pb-refresh-products', handleRefresh);
             };
         }
     }, [activeTab, subscribeToMarketplace, unsubscribeFromMarketplace]); // eslint-disable-line react-hooks/exhaustive-deps

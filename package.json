@@ -16,7 +16,6 @@
     "@google/genai": "^1.30.0",
     "@linera/client": "^0.15.8",
     "@linera/metamask": "^0.15.8",
-    "@linera/signer": "^0.15.8",
     "axios": "^1.13.2",
     "ethers": "^6.15.0",
     "lucide-react": "^0.561.0",

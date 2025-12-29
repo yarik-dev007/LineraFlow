@@ -1,4 +1,4 @@
-import { PrivateKey } from '@linera/signer';
+import { signer } from '@linera/client';
 
 const SESSION_KEY_STORAGE = 'linera_session_key';
 
@@ -7,7 +7,7 @@ export const sessionManager = {
      * Generates a new session key and saves it to local storage.
      * Returns the generated PrivateKey instance.
      */
-    createSessionKey: (): PrivateKey => {
+    createSessionKey: (): signer.PrivateKey => {
         // Generate a new random key (using 32 random bytes converted to hex)
         const array = new Uint8Array(32);
         crypto.getRandomValues(array);
@@ -15,7 +15,7 @@ export const sessionManager = {
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
 
-        const key = new PrivateKey(privateKeyHex);
+        const key = new signer.PrivateKey(privateKeyHex);
         localStorage.setItem(SESSION_KEY_STORAGE, privateKeyHex);
         return key;
     },
@@ -24,11 +24,11 @@ export const sessionManager = {
      * Loads the session key from local storage.
      * Returns null if no key exists.
      */
-    loadSessionKey: (): PrivateKey | null => {
+    loadSessionKey: (): signer.PrivateKey | null => {
         const storedKey = localStorage.getItem(SESSION_KEY_STORAGE);
         if (!storedKey) return null;
         try {
-            return new PrivateKey(storedKey);
+            return new signer.PrivateKey(storedKey);
         } catch (e) {
             console.error("Failed to load session key", e);
             return null;

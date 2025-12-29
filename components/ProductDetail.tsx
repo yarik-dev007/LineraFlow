@@ -68,7 +68,7 @@ const ProductDetail: React.FC = () => {
                                 : "",
                             price: record.price,
                             image: record.image_preview
-                                ? `/pb/api/files/${record.collectionId}/${record.id}/${record.image_preview}`
+                                ? pb.files.getUrl({ collectionId: record.collectionId, id: record.id }, record.image_preview)
                                 : undefined,
                             image_preview: record.image_preview,
                             publicData: [],
@@ -253,7 +253,7 @@ const ProductDetail: React.FC = () => {
                                 {/* Author Avatar */}
                                 {product.authorAvatar && product.authorProfileId && product.authorProfileCollectionId ? (
                                     <img
-                                        src={`/pb/api/files/${product.authorProfileCollectionId}/${product.authorProfileId}/${product.authorAvatar}`}
+                                        src={pb.files.getUrl({ collectionId: product.authorProfileCollectionId, id: product.authorProfileId }, product.authorAvatar)}
                                         alt={product.authorDisplayName || 'Author'}
                                         className="w-8 h-8 rounded-full border border-deep-black object-cover shadow-sm bg-white"
                                     />

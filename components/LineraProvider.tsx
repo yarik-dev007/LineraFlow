@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
-import { initialize, Client, Faucet, Wallet, Application } from '@linera/client';
-import { MetaMask, PrivateKey } from '@linera/signer';
+import { initialize, Client, Faucet, Wallet, Application, signer } from '@linera/client';
+import { Signer as MetaMask } from '@linera/metamask';
 import { Composite } from '../utils/CompositeSigner';
 
 interface BalanceData {
@@ -212,13 +212,72 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
             const faucetUrl = import.meta.env.VITE_LINERA_FAUCET_URL;
             const applicationId = import.meta.env.VITE_LINERA_APPLICATION_ID;
 
+            // WALLET PROVIDER DETECTION - Handle multiple wallet extensions
+            // When users have Nightly, MetaMask, or other wallets, they compete for window.ethereum
+            let ethereumProvider = (window as any).ethereum;
+
+            // If multiple providers exist, prefer MetaMask or the first non-Nightly provider
+            if (ethereumProvider) {
+                // Check if there are multiple providers (e.g., window.ethereum.providers array)
+                if (ethereumProvider.providers?.length > 0) {
+                    console.log('🔍 Multiple Ethereum providers detected:', ethereumProvider.providers.length);
+
+                    // Try to find MetaMask first
+                    const metaMaskProvider = ethereumProvider.providers.find((p: any) => p.isMetaMask && !p.isNightly);
+                    if (metaMaskProvider) {
+                        ethereumProvider = metaMaskProvider;
+                        console.log('✅ Selected MetaMask provider');
+                    } else {
+                        // Fallback: use first non-Nightly provider
+                        const nonNightlyProvider = ethereumProvider.providers.find((p: any) => !p.isNightly);
+                        if (nonNightlyProvider) {
+                            ethereumProvider = nonNightlyProvider;
+                            console.log('✅ Selected first non-Nightly provider');
+                        }
+                    }
+                } else if (ethereumProvider.isNightly && (window as any).ethereum !== ethereumProvider) {
+                    // If current provider is Nightly but there's another ethereum object, try to use it
+                    console.warn('⚠️ Nightly wallet detected, looking for alternatives...');
+                }
+
+                // Temporarily override window.ethereum with selected provider for MetaMask signer
+                const originalEthereum = (window as any).ethereum;
+                try {
+                    // Only override if we found a better provider
+                    if (ethereumProvider !== originalEthereum) {
+                        Object.defineProperty(window, 'ethereum', {
+                            value: ethereumProvider,
+                            writable: true,
+                            configurable: true
+                        });
+                    }
+                } catch (e) {
+                    // If we can't override (getter-only), just use what we have
+                    console.warn('⚠️ Could not override window.ethereum, using existing provider');
+                }
+            }
+
             // Prepare Signers
             // MetaMask signer will pick up the *current* window.ethereum.selectedAddress
-            const metaMaskSigner = new MetaMask();
-            let metaMaskAddress = await metaMaskSigner.address();
-            // NORMALIZE ADDRESS: Ensure we consistently use lowercase for storage keys
-            metaMaskAddress = metaMaskAddress.toLowerCase();
-            console.log("🦊 MetaMask address (normalized):", metaMaskAddress);
+            let metaMaskSigner;
+            let metaMaskAddress;
+
+            try {
+                metaMaskSigner = new MetaMask();
+                metaMaskAddress = await metaMaskSigner.address();
+                // NORMALIZE ADDRESS: Ensure we consistently use lowercase for storage keys
+                metaMaskAddress = metaMaskAddress.toLowerCase();
+                console.log("🦊 MetaMask address (normalized):", metaMaskAddress);
+            } catch (error) {
+                console.error("❌ Failed to initialize MetaMask signer:", error);
+                setState(prev => ({
+                    ...prev,
+                    status: 'Error',
+                    loading: false,
+                    error: new Error('Failed to connect to Ethereum wallet. Please ensure you have MetaMask or a compatible wallet installed and unlocked.')
+                }));
+                throw error;
+            }
 
             // ---------------------------------------------------------
             // PER-ACCOUNT SESSION KEY & CHAIN ID LOGIC
@@ -243,10 +302,10 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 setCookie(userSessionKeyKey, storedKey);
             }
 
-            let autosigner: PrivateKey;
+            let autosigner: signer.PrivateKey;
 
             if (storedKey) {
-                autosigner = new PrivateKey(storedKey);
+                autosigner = new signer.PrivateKey(storedKey);
                 console.log("🔑 Loaded existing autosigner for", metaMaskAddress);
             } else {
                 // Generate a new random key
@@ -255,8 +314,7 @@ export const LineraProvider: React.FC<{ children: ReactNode }> = ({ children }) 
                 const privateKeyHex = Array.from(array)
                     .map(b => b.toString(16).padStart(2, '0'))
                     .join('');
-                autosigner = new PrivateKey(privateKeyHex);
-
+                autosigner = new signer.PrivateKey(privateKeyHex);
                 // Save to BOTH
                 localStorage.setItem(userSessionKeyKey, privateKeyHex);
                 setCookie(userSessionKeyKey, privateKeyHex);

@@ -117,7 +117,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
         const reader = new FileReader();
         reader.onload = async () => {
             try {
-                const response = await fetch('http://localhost:8070/upload', {
+                const response = await fetch(import.meta.env.VITE_BLOB_SERVER_URL || '/upload', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -312,7 +312,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold uppercase">Price (LIN)</label>
-                                    <input type="number" step="any" min="0" value={price} onChange={e => setPrice(e.target.value)} className="w-full border-2 border-deep-black p-2 mt-1" placeholder="0.00" />
+                                    <input type="number" step="0.01" min="0" value={price} onChange={e => setPrice(e.target.value)} className="w-full border-2 border-deep-black p-2 mt-1" placeholder="0.00" />
                                 </div>
                             </div>
 

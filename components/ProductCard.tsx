@@ -16,6 +16,7 @@ interface ProductCardProps {
 }
 
 import { useNavigate } from 'react-router-dom';
+import { pb } from './pocketbase';
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased, onBuy, onEdit, onDelete, onDownload, onView, activeTab = 'BROWSE', isDeleting = false }) => {
     const navigate = useNavigate();
@@ -56,7 +57,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
             <div className="h-48 bg-gray-100 border-b-2 border-deep-black flex items-center justify-center overflow-hidden relative">
                 {product.image_preview && product.pbId && product.collectionId ? (
                     <img
-                        src={`/pb/api/files/${product.collectionId}/${product.pbId}/${product.image_preview}`}
+                        src={pb.files.getURL({ collectionId: product.collectionId, id: product.pbId }, product.image_preview)}
                         alt={product.name}
                         className="w-full h-full object-cover"
                         onError={(e) => {
@@ -101,7 +102,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, isOwner, isPurchased
                             {/* Author Avatar */}
                             {product.authorAvatar && product.authorProfileId && product.authorProfileCollectionId ? (
                                 <img
-                                    src={`/pb/api/files/${product.authorProfileCollectionId}/${product.authorProfileId}/${product.authorAvatar}`}
+                                    src={pb.files.getUrl({ collectionId: product.authorProfileCollectionId, id: product.authorProfileId }, product.authorAvatar)}
                                     alt={product.authorDisplayName || 'Author'}
                                     className="w-6 h-6 rounded-full border border-deep-black object-cover shadow-sm bg-white"
                                 />

@@ -9,18 +9,22 @@ EMAIL="egor4042007@gmail.com"
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")"/.. && pwd)"
 RUN_USER="${SUDO_USER:-$(whoami)}"
 BUILD_DIR="$WORK_DIR/dist"
-PB_VERSION="0.22.21" # Adjust version as needed
+PB_VERSION="0.35.0"
+
+echo ">>> Starting deployment for $DOMAIN..."
 
 # =========================
 # INSTALL SYSTEM PACKAGES
 # =========================
 echo ">>> Installing system packages..."
 sudo apt-get update -y
-sudo apt-get install -y ca-certificates curl gnupg ufw nodejs nginx certbot python3-certbot-nginx unzip
+sudo apt-get install -y ca-certificates curl gnupg ufw nodejs nginx certbot python3-certbot-nginx unzip openssl
 
 # Install Node.js 20.x
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+if ! command -v node &> /dev/null; then
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+fi
 
 # =========================
 # UFW FIREWALL
@@ -28,34 +32,37 @@ sudo apt-get install -y nodejs
 echo ">>> Configuring Firewall..."
 sudo ufw allow OpenSSH
 sudo ufw allow "Nginx Full"
-sudo ufw allow 8090/tcp # Allow external access to PocketBase port if needed, but we will proxy via Nginx
-sudo ufw allow 8077/tcp # Allow external access to Blob Server
+sudo ufw allow 8090/tcp
+sudo ufw allow 8077/tcp
 sudo ufw --force enable
 
 # =========================
-# INSTALL DEPENDENCIES & BUILD
-# =========================
-# =========================
 # ENVIRONMENT CONFIG
 # =========================
-# echo ">>> Generating .env file..."
-# Skipped to preserve existing environment variables
-# cat > "$WORK_DIR/.env" <<EOF
-# VITE_LINERA_FAUCET_URL=https://faucet.testnet-conway.linera.net
-# VITE_LINERA_APPLICATION_ID=a2376c5a0cc2e471078462f22eacca74d1ca8849dd09dbc47cb0e5da5e06fb89
-# VITE_LINERA_MAIN_CHAIN_ID=bdbf434aa7a91c5696b142a32028361ee988175e1da207c26fcd06b3e0205eb8
-# VITE_POCKETBASE_URL=https://$DOMAIN:8090
-# EOF
+echo ">>> Generating .env file..."
+cat > "$WORK_DIR/.env" <<EOF
+VITE_LINERA_FAUCET_URL=https://faucet.testnet-conway.linera.net
+VITE_LINERA_APPLICATION_ID=c22e3cca7be626030f9a2e2b6eb9e22dc1f2f13296d5e4fb3a0496f7da3b05b8
+VITE_LINERA_MAIN_CHAIN_ID=fcc99b4e4c6be2f33864d71de61acb33c0f692c397a32b6d64578cf0c82f7faa
+VITE_POCKETBASE_URL=https://$DOMAIN:8090
+VITE_BLOB_SERVER_URL=/upload
+EOF
 
+# =========================
+# BUILD FRONTEND
+# =========================
 echo ">>> Building frontend..."
 cd "$WORK_DIR"
-npm ci
+if [ ! -d "node_modules" ]; then
+    npm ci
+fi
 npm run build
 
 # Deploy Frontend Files
 sudo mkdir -p /var/www/$DOMAIN
 sudo rm -rf /var/www/$DOMAIN/*
 sudo cp -r "$WORK_DIR/dist/"* /var/www/$DOMAIN/
+sudo chown -R www-data:www-data /var/www/$DOMAIN
 
 # =========================
 # SETUP POCKETBASE
@@ -65,14 +72,20 @@ sudo mkdir -p /opt/pocketbase
 cd /opt/pocketbase
 
 if [ ! -f "pocketbase" ]; then
-    wget https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip
-    unzip pocketbase_${PB_VERSION}_linux_amd64.zip
-    rm pocketbase_${PB_VERSION}_linux_amd64.zip
+    wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip"
+    unzip -o pocketbase_${PB_VERSION}_linux_amd64.zip || {
+        echo ">>> Using fallback stable version 0.23.12..."
+        PB_VERSION="0.23.12"
+        wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_amd64.zip"
+        unzip -o pocketbase_${PB_VERSION}_linux_amd64.zip
+    }
+    rm -f pocketbase_${PB_VERSION}_linux_amd64.zip
     chmod +x pocketbase
 fi
 
 # Create Systemd Service for PocketBase
-sudo bash -c "cat > /etc/systemd/system/pocketbase.service <<EOF
+# We use 8091 for internal binding to avoid conflict with Nginx on 8090
+cat <<EOF | sudo tee /etc/systemd/system/pocketbase.service > /dev/null
 [Unit]
 Description=PocketBase Service
 After=network.target
@@ -87,14 +100,10 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
-EOF"
+EOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable --now pocketbase
-
-echo ">>> Setting up Blob Server..."
 # Create Systemd Service for Blob Server
-sudo bash -c "cat > /etc/systemd/system/linera-blob-server.service <<EOF
+cat <<EOF | sudo tee /etc/systemd/system/linera-blob-server.service > /dev/null
 [Unit]
 Description=Linera Blob Server
 After=network.target
@@ -110,259 +119,90 @@ Environment=PORT=8077
 
 [Install]
 WantedBy=multi-user.target
-EOF"
+EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now linera-blob-server
+sudo systemctl enable --now pocketbase linera-blob-server
 
 # =========================
 # NGINX CONFIG
 # =========================
 echo ">>> Configuring Nginx..."
 
-# Main Site Config (Port 80/443) + PocketBase Proxy (Port 8090 SSL)
-# Remove default nginx config if it exists
-sudo rm -f /etc/nginx/sites-enabled/default
-
-# Ensure webroot exists
-sudo mkdir -p /var/www/html/.well-known/acme-challenge
-sudo chown -R www-data:www-data /var/www/html
-sudo chmod -R 755 /var/www/html
-
-sudo bash -c "cat > /etc/nginx/sites-available/$DOMAIN <<'NGINXEOF'
-server {
-    listen 80;
-    server_name lineraflow.xyz www.lineraflow.xyz;
-
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-    }
-
-    root /var/www/lineraflow.xyz;
-    index index.html;
-
-    add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-    add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-    add_header Cross-Origin-Resource-Policy \"same-origin\" always;
-
-    # Assets
-    location /assets/ {
-        root /var/www/lineraflow.xyz;
-        add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-        add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-        add_header Cross-Origin-Resource-Policy \"same-origin\" always;
-        add_header Access-Control-Allow-Origin \"*\" always;
-        add_header Access-Control-Allow-Methods \"GET, HEAD, OPTIONS\" always;
-        add_header Cache-Control \"public, max-age=31536000, immutable\";
-
-        if (\$request_method = OPTIONS) {
-            add_header Content-Length 0;
-            add_header Content-Type text/plain;
-            return 204;
-        }
-    }
-
-    # Static files
-    location / {
-        try_files \$uri /index.html;
-    }
-}
-
-# Main Frontend Server
-server {
-    listen 443 ssl http2;
-    server_name lineraflow.xyz;
-
-    # SSL Certificates
-    ssl_certificate /etc/letsencrypt/live/lineraflow.xyz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/lineraflow.xyz/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-    root /var/www/lineraflow.xyz;
-    index index.html;
-
-    # Security & COEP/COOP Headers for Linera WASM
-    add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-    add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-    add_header Cross-Origin-Resource-Policy \"same-origin\" always;
-
-    # Assets
-    location /assets/ {
-        root /var/www/lineraflow.xyz;
-        add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-        add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-        add_header Cross-Origin-Resource-Policy \"same-origin\" always;
-        add_header Cache-Control \"public, max-age=31536000, immutable\";
-    }
-
-    # Blob Server Proxy
-    location /upload {
-        proxy_pass http://127.0.0.1:8077;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        client_max_body_size 50M;
-    }
-
-    # SPA Fallback
-    location / {
-        try_files \$uri /index.html;
-    }
-}
-
-# PocketBase Secure Proxy (Port 8090)
-server {
-    listen 8090 ssl http2;
-    server_name lineraflow.xyz;
-
-    # Reuse same SSL certs
-    ssl_certificate /etc/letsencrypt/live/lineraflow.xyz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/lineraflow.xyz/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
-    # COEP/COOP Headers
-    add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-    add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-    add_header Access-Control-Allow-Origin \"*\" always;
-
-    location / {
-        proxy_pass http://127.0.0.1:8090;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        client_max_body_size 10M;
-    }
-}
-NGINXEOF"
-
-# Create dummy certs if they don't exist so Nginx can start for Certbot
+# Ensure dummy certs exist if we are running for the first time
+# This allows Nginx to start so Certbot can run its tests.
 if [ ! -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-    echo ">>> Creating dummy certificates for initial Nginx start..."
+    echo ">>> Creating temporary certificates..."
     sudo mkdir -p /etc/letsencrypt/live/$DOMAIN
     sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
         -keyout /etc/letsencrypt/live/$DOMAIN/privkey.pem \
         -out /etc/letsencrypt/live/$DOMAIN/fullchain.pem \
         -subj "/CN=$DOMAIN"
     
-    # Create dhparams if missing
     if [ ! -f "/etc/letsencrypt/ssl-dhparams.pem" ]; then
         sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
     fi
     
-    # Create options-ssl-nginx.conf if missing
     if [ ! -f "/etc/letsencrypt/options-ssl-nginx.conf" ]; then
-        sudo bash -c "cat > /etc/letsencrypt/options-ssl-nginx.conf <<'EOF'
+        sudo bash -c "cat > /etc/letsencrypt/options-ssl-nginx.conf <<'ENFOF'
 ssl_session_cache shared:le_nginx_SSL:10m;
 ssl_session_timeout 1440m;
 ssl_session_tickets off;
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_prefer_server_ciphers off;
 ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
-EOF"
+ENFOF"
     fi
 fi
 
-sudo ln -sf "/etc/nginx/sites-available/$DOMAIN" "/etc/nginx/sites-enabled/$DOMAIN"
-sudo nginx -t
+# Link site
+sudo rm -f /etc/nginx/sites-enabled/default
 
-# Stop PocketBase temporarily to avoid port conflict with Nginx
-sudo systemctl stop pocketbase || true
+# Generate Nginx Config
+cat <<EOF | sudo tee /etc/nginx/sites-available/$DOMAIN > /dev/null
+# Map Upgrade header to Connection header for SSE/WebSocket support
+map \$http_upgrade \$connection_upgrade {
+    default upgrade;
+    ''      keep-alive;
+}
 
-sudo systemctl start nginx
-
-# Restart PocketBase after Nginx is running
-sudo systemctl start pocketbase
-
-# =========================
-# LET'S ENCRYPT SSL
-# =========================
-echo ">>> Requesting SSL Certificates..."
-
-# Clean up any existing certbot locks
-sudo pkill -f certbot || true
-sudo rm -f /var/lib/letsencrypt/.certbot.lock || true
-sudo rm -f /tmp/.certbot.lock || true
-
-# Remove dummy certificates if they exist
-if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-    # Check if it's a self-signed (dummy) certificate
-    if sudo openssl x509 -in /etc/letsencrypt/live/$DOMAIN/fullchain.pem -noout -issuer | grep -q "CN=$DOMAIN"; then
-        echo ">>> Removing dummy certificates..."
-        sudo rm -rf /etc/letsencrypt/live/$DOMAIN
-        sudo rm -rf /etc/letsencrypt/archive/$DOMAIN
-        sudo rm -rf /etc/letsencrypt/renewal/$DOMAIN.conf
-    fi
-fi
-
-sudo certbot --nginx -n --agree-tos -m "$EMAIL" -d "$DOMAIN"
-
-# Fix certificate path if certbot created -0001 version
-if [ -d "/etc/letsencrypt/live/$DOMAIN-0001" ]; then
-    echo ">>> Fixing certificate symlink..."
-    sudo rm -rf /etc/letsencrypt/live/$DOMAIN
-    sudo ln -s /etc/letsencrypt/live/$DOMAIN-0001 /etc/letsencrypt/live/$DOMAIN
-fi
-
-# Verify certificate is valid
-if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-    echo ">>> Certificate installed successfully"
-    sudo openssl x509 -in /etc/letsencrypt/live/$DOMAIN/fullchain.pem -noout -issuer -subject
-else
-    echo ">>> ERROR: Certificate not found!"
-    exit 1
-fi
-
-# Fix SSL config to preserve all headers
-sudo bash -c "cat > /etc/nginx/sites-available/$DOMAIN <<'NGINXEOF'
 server {
     listen 80;
-    server_name lineraflow.xyz www.lineraflow.xyz;
+    server_name $DOMAIN www.$DOMAIN;
     return 301 https://\$server_name\$request_uri;
 }
 
 server {
     listen 443 ssl http2;
-    server_name lineraflow.xyz www.lineraflow.xyz;
+    server_name $DOMAIN;
 
-    ssl_certificate /etc/letsencrypt/live/lineraflow.xyz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/lineraflow.xyz/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    root /var/www/lineraflow.xyz;
+    root /var/www/$DOMAIN;
     index index.html;
 
-    # Critical headers for SharedArrayBuffer (WASM threads)
-    add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-    add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-    add_header Cross-Origin-Resource-Policy \"same-origin\" always;
+    # Security Headers
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Embedder-Policy "require-corp" always;
+    add_header Cross-Origin-Resource-Policy "same-origin" always;
 
     # Assets
     location /assets/ {
-        root /var/www/lineraflow.xyz;
-        add_header Cross-Origin-Opener-Policy \"same-origin\" always;
-        add_header Cross-Origin-Embedder-Policy \"require-corp\" always;
-        add_header Cross-Origin-Resource-Policy \"same-origin\" always;
-        add_header Access-Control-Allow-Origin \"*\" always;
-        add_header Access-Control-Allow-Methods \"GET, HEAD, OPTIONS\" always;
-        add_header Cache-Control \"public, max-age=31536000, immutable\";
+        root /var/www/$DOMAIN;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
 
-        if (\$request_method = OPTIONS) {
-            add_header Content-Length 0;
-            add_header Content-Type text/plain;
-            return 204;
-        }
+    # Blob Server Proxy
+    location /upload {
+        proxy_pass http://127.0.0.1:8077;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \$connection_upgrade;
+        proxy_set_header Host \$host;
+        client_max_body_size 50M;
     }
 
     # Static files
@@ -374,41 +214,54 @@ server {
 # PocketBase Secure Proxy (Port 8090)
 server {
     listen 8090 ssl http2;
-    server_name lineraflow.xyz www.lineraflow.xyz;
+    server_name $DOMAIN;
 
-    # Reuse same SSL certs
-    ssl_certificate /etc/letsencrypt/live/lineraflow.xyz/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/lineraflow.xyz/privkey.pem;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-
-
     location / {
-        # Let PocketBase handle CORS - don't add headers here to avoid duplicates
         proxy_pass http://127.0.0.1:8091;
         proxy_http_version 1.1;
+
+        # SSE specific configuration
+        proxy_set_header Connection '';
+        chunked_transfer_encoding off;
         
-        # WebSocket and SSE support
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection \"upgrade\";
+        # Standard proxy headers
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         
-        # Disable buffering for SSE (Server-Sent Events)
+        # Force COEP/CORP compatibility for cross-origin images
+        proxy_hide_header Cross-Origin-Resource-Policy;
+        add_header Cross-Origin-Resource-Policy "cross-origin" always;
+        
+        # Disable buffering for SSE
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
+        add_header X-Accel-Buffering no;
         
         client_max_body_size 10M;
     }
 }
-NGINXEOF"
+EOF
 
+sudo ln -sf /etc/nginx/sites-available/$DOMAIN /etc/nginx/sites-enabled/$DOMAIN
 sudo nginx -t
+sudo systemctl restart nginx
+
+# =========================
+# SSL CERTIFICATES
+# =========================
+echo ">>> Running Certbot..."
+sudo certbot --nginx --non-interactive --agree-tos -m "$EMAIL" -d "$DOMAIN" --redirect
+
+# Reload Nginx to ensure new certs are picked up
 sudo systemctl reload nginx
 
 echo "====================================="

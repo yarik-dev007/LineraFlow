@@ -119,42 +119,74 @@ const AppContent: React.FC = () => {
   useEffect(() => {
     fetchData();
 
-    // Single subscription setup - Log only, no automatic fetch
-    const safeSubscribe = async (col: string, filter: string, handler: (e: any) => void) => {
+    let unsubDonations: (() => Promise<void>) | null = null;
+    let unsubProfiles: (() => Promise<void>) | null = null;
+    let unsubProducts: (() => Promise<void>) | null = null;
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    const setupSubscriptions = async () => {
       try {
-        return await pb.collection(col).subscribe(filter, handler);
-      } catch (e) {
-        console.warn(`Failed to subscribe to ${col}:`, e);
-        return () => Promise.resolve(); // Return no-op async unsub
+        // Test connection first
+        await pb.collection('profiles').getList(1, 1);
+        console.log('✅ PocketBase connection established');
+
+        // Donations subscription
+        unsubDonations = await pb.collection('donations').subscribe('*', (e) => {
+          console.log('🔔 [REALTIME] Donation:', e.action, e.record.id);
+          if (e.action === 'create') {
+            setAllDonations(prev => [e.record, ...prev]);
+            fetchData(true); // Update creator totals
+          } else if (e.action === 'update') {
+            setAllDonations(prev => prev.map(d => d.id === e.record.id ? e.record : d));
+          } else if (e.action === 'delete') {
+            setAllDonations(prev => prev.filter(d => d.id !== e.record.id));
+          }
+        });
+
+        // Profiles subscription
+        unsubProfiles = await pb.collection('profiles').subscribe('*', (e) => {
+          console.log('🔔 [REALTIME] Profile:', e.action, e.record.owner);
+          fetchData(true);
+        });
+
+        // Products subscription
+        unsubProducts = await pb.collection('products').subscribe('*', (e) => {
+          console.log('🔔 [REALTIME] Product:', e.action, e.record.product_id);
+          window.dispatchEvent(new CustomEvent('pb-refresh-products', {
+            detail: { action: e.action, record: e.record }
+          }));
+        });
+
+        console.log('✅ All real-time subscriptions active');
+      } catch (err) {
+        console.error('❌ Subscription setup failed:', err);
+        console.log('⚠️ Real-time updates disabled, using polling fallback');
+        // Fallback to polling every 30 seconds
+        pollInterval = setInterval(() => {
+          console.log('🔄 [POLL] Fetching updates...');
+          fetchData(true);
+        }, 30000);
       }
     };
 
-    const unsubDonationsPromise = safeSubscribe('donations', '*', (e) => {
-      console.log('🔔 [REALTIME] Donation event:', e.action);
-      if (e.action === 'create') {
-        setAllDonations(prev => [e.record, ...prev]);
-      } else if (e.action === 'update') {
-        setAllDonations(prev => prev.map(d => d.id === e.record.id ? e.record : d));
-      } else if (e.action === 'delete') {
-        setAllDonations(prev => prev.filter(d => d.id !== e.record.id));
-      }
-    });
-
-    const unsubProfilesPromise = safeSubscribe('profiles', '*', (e) => {
-      console.log('🔔 [REALTIME] Profile event:', e.action);
-    });
-
-    const unsubProductsPromise = safeSubscribe('products', '*', (e) => {
-      console.log('🔔 [REALTIME] Product event:', e.action);
-      window.dispatchEvent(new CustomEvent('pb-refresh-products', { detail: { action: e.action, record: e.record } }));
-    });
+    setupSubscriptions();
 
     return () => {
-      unsubDonationsPromise.then(fn => fn && fn().catch(() => { }));
-      unsubProfilesPromise.then(fn => fn && fn().catch(() => { }));
-      unsubProductsPromise.then(fn => fn && fn().catch(() => { }));
+      console.log('🧹 Cleaning up subscriptions...');
+      if (unsubDonations) {
+        unsubDonations().catch(e => console.warn('Unsub donations failed:', e));
+      }
+      if (unsubProfiles) {
+        unsubProfiles().catch(e => console.warn('Unsub profiles failed:', e));
+      }
+      if (unsubProducts) {
+        unsubProducts().catch(e => console.warn('Unsub products failed:', e));
+      }
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
     };
-  }, [accountOwner]);
+  }, []); // FIXED: Empty deps - subscriptions created once, persist across accountOwner changes
 
   // 2. Filter User Donations when accountOwner or donations change
   useEffect(() => {
@@ -203,6 +235,17 @@ const AppContent: React.FC = () => {
 
     checkProfile();
   }, [accountOwner, balances.accountBalance, application]);
+
+  // 4. Synchronize viewingCreator when creators list updates
+  useEffect(() => {
+    if (viewingCreator) {
+      const updated = creators.find(c => c.id === viewingCreator.id);
+      if (updated && JSON.stringify(updated) !== JSON.stringify(viewingCreator)) {
+        console.log('🔄 [App] Syncing viewingCreator data...');
+        setViewingCreator(updated);
+      }
+    }
+  }, [creators, viewingCreator?.id]);
 
   // Handlers
   const handleConnectWallet = async () => {
