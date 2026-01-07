@@ -30,6 +30,13 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess, i
         const file = e.target.files?.[0];
         if (!file) return;
 
+        // Size Check (Max 1MB)
+        if (file.size > 1024 * 1024) {
+            alert("File size exceeds 1MB limit. Please choose a smaller file.");
+            setUploadStatus('❌ File too large (max 1MB)');
+            return;
+        }
+
         setImageFile(file);
         setUploadStatus('Uploading...');
 
@@ -152,7 +159,7 @@ const CreatePostModal: React.FC<CreatePostModalProps> = ({ onClose, onSuccess, i
                         <label className="cursor-pointer flex flex-col items-center gap-2 hover:opacity-70 transition-opacity">
                             <Upload className="w-8 h-8 text-emerald-600" />
                             <span className="font-mono text-xs font-bold uppercase">
-                                {imageHash ? 'Change Media' : 'Upload Media'}
+                                {imageHash ? 'Change Media' : 'Upload Media'} <span className="text-[10px] font-normal text-gray-500">(Max 1MB)</span>
                             </span>
                             <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                         </label>

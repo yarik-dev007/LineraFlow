@@ -208,6 +208,13 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
     };
 
     const uploadFile = (file: File, id: string) => {
+        // Size Check (Max 1MB)
+        if (file.size > 1024 * 1024) {
+            alert("File size exceeds 1MB limit. Please choose a smaller file.");
+            setUploadStatus('❌ File too large (max 1MB)');
+            return;
+        }
+
         setActiveUploadId(id);
         setUploadStatus(`Uploading ${file.name}...`);
 
@@ -605,6 +612,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                                     }}
                                     className="text-sm"
                                 />
+                                <span className="text-[10px] text-gray-500 uppercase">(Max 1MB)</span>
                                 {avatarFile && (
                                     <button
                                         onClick={() => uploadFile(avatarFile, 'avatar')}
@@ -652,6 +660,7 @@ const ProfileEditor: React.FC<ProfileEditorProps> = ({ initialProfile, onSave, d
                                     }}
                                     className="text-sm"
                                 />
+                                <span className="text-[10px] text-gray-500 uppercase">(Max 1MB)</span>
                                 {headerFile && (
                                     <button
                                         onClick={() => uploadFile(headerFile, 'header')}

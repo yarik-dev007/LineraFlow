@@ -17,21 +17,34 @@ export default defineConfig(({ mode }) => {
       },
       proxy: {}
     },
+    preview: {
+      port: 3030,
+      host: '0.0.0.0',
+      allowedHosts: true,
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+      },
+    },
     plugins: [react()],
     build: {
+      target: 'esnext', // Required for top-level await support in Linera client
       rollupOptions: {
         input: {
           main: path.resolve(__dirname, 'index.html'),
-          linera: '@linera/client',
         },
         preserveEntrySignatures: 'strict',
       },
     },
-    worker: {
-      format: 'es',
-      plugins: () => [],
+    esbuild: {
+      supported: {
+        'top-level-await': true,
+      },
     },
     optimizeDeps: {
+      esbuildOptions: {
+        target: 'esnext', // Required for top-level await during development
+      },
       exclude: [
         '@linera/client', // Exclude from optimization for WASM to work
       ],

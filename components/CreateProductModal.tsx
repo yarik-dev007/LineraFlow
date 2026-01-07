@@ -111,6 +111,13 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
     };
 
     const uploadFile = (file: File, id: string) => {
+        // Size Check (Max 1MB)
+        if (file.size > 1024 * 1024) {
+            alert("File size exceeds 1MB limit. Please choose a smaller file.");
+            setUploadStatus('❌ File too large (max 1MB)');
+            return;
+        }
+
         setActiveUploadId(id);
         setUploadStatus(`Uploading ${file.name}...`);
 
@@ -362,6 +369,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                                                 setPreviewImage(e.target.files[0]);
                                             }
                                         }} className="text-sm" />
+                                        <span className="text-[10px] text-gray-500 uppercase">(Max 1MB)</span>
                                         {previewImage && (
                                             <button onClick={() => uploadFile(previewImage, 'preview')} className="bg-deep-black text-white px-3 py-1 text-xs uppercase font-bold">Upload</button>
                                         )}
@@ -453,6 +461,7 @@ const CreateProductModal: React.FC<CreateProductModalProps> = ({ onClose, onCrea
                                                                 onChange={e => e.target.files && uploadFile(e.target.files[0], block.id)}
                                                                 className="text-xs"
                                                             />
+                                                            <span className="text-[10px] text-gray-500 uppercase">(Max 1MB)</span>
                                                             {activeUploadId === block.id && <span className="text-xs animate-pulse">Uploading...</span>}
                                                         </div>
                                                     )}
